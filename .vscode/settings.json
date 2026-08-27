@@ -1,8 +1,8 @@
 {
     "editor.formatOnSave": true,
     "notebook.codeActionsOnSave": {
-        "source.fixAll.ruff": "explicit",
-        "source.organizeImports.ruff": "explicit"
+        "notebook.source.fixAll.ruff": "explicit",
+        "notebook.source.organizeImports.ruff": "explicit"
     },
     "[python]": {
         "editor.codeActionsOnSave": {
@@ -11,4 +11,5 @@
         },
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
+    "python.languageServer": "None"
 }
