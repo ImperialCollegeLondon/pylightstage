@@ -32,6 +32,7 @@ export class StageScene {
     this.visibility = { rgb: true, white: true };
     this.selectedLogicalIndices = new Set();
     this.selectedLogicalIndex = null;
+    this.hoveredLogicalIndex = null;
     this.version = 0;
     this.#buildLayout();
   }
@@ -106,12 +107,29 @@ export class StageScene {
     this.instanceData[physicalIndex * INSTANCE_STRIDE + ALPHA_OFFSET] = alpha;
   }
 
+  #highlightAlpha(logicalIndex, normalAlpha = 1) {
+    if (this.selectedLogicalIndices.has(logicalIndex)) return 2;
+    return this.hoveredLogicalIndex === logicalIndex ? 1.5 : normalAlpha;
+  }
+
+  hoverFixture(logicalIndex) {
+    if (logicalIndex === this.hoveredLogicalIndex) return;
+    const previous = this.hoveredLogicalIndex;
+    this.hoveredLogicalIndex = logicalIndex;
+    for (const index of [previous, logicalIndex]) {
+      if (index === null) continue;
+      for (const channel of ["rgb", "white"]) {
+        this.#setAlpha(index, channel, this.visibility[channel] ? this.#highlightAlpha(index) : 0);
+      }
+    }
+    this.version += 1;
+  }
+
   setLayerVisibility(channel, visible) {
     if (!(channel in this.visibility)) throw new RangeError(`Unknown fixture layer: ${channel}`);
     this.visibility[channel] = Boolean(visible);
     for (let logicalIndex = 0; logicalIndex < this.logicalCount; logicalIndex += 1) {
-      const selected = this.selectedLogicalIndices.has(logicalIndex);
-      this.#setAlpha(logicalIndex, channel, visible ? (selected ? 2 : 1) : 0);
+      this.#setAlpha(logicalIndex, channel, visible ? this.#highlightAlpha(logicalIndex) : 0);
     }
     this.version += 1;
   }
@@ -130,11 +148,10 @@ export class StageScene {
     colour.slice(0, 3).forEach((value, index) => {
       this.instanceData[offset + index] = value;
     });
-    const selected = this.selectedLogicalIndices.has(logicalIndex);
     this.#setAlpha(
       logicalIndex,
       channel,
-      this.visibility[channel] ? (selected ? 2 : (colour[3] ?? 1)) : 0,
+      this.visibility[channel] ? this.#highlightAlpha(logicalIndex, colour[3] ?? 1) : 0,
     );
     if (bumpVersion) this.version += 1;
   }
@@ -157,7 +174,7 @@ export class StageScene {
     this.selectedLogicalIndex = primaryLogicalIndex;
     for (const index of changed) {
       for (const channel of ["rgb", "white"]) {
-        const alpha = this.visibility[channel] ? (selection.has(index) ? 2 : 1) : 0;
+        const alpha = this.visibility[channel] ? this.#highlightAlpha(index) : 0;
         this.#setAlpha(index, channel, alpha);
       }
     }

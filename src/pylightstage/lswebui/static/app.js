@@ -1,5 +1,5 @@
 import { loadConfiguration, readServer } from "./api.js";
-import { camera, installCameraControls } from "./camera.js";
+import { camera, installCameraControls, pickFixture } from "./camera.js";
 import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
 import { Canvas2DRenderer } from "./renderers/canvas2d.js";
@@ -125,7 +125,26 @@ function installSceneControls(scene, gridRenderer, selectFixture) {
 
 function startRendering(scene, renderers) {
   const labels = new StageLabels(canvas, query("#stage-labels"));
+  let pointer = null;
+  for (const view of [canvas, gridCanvas]) {
+    view.addEventListener("pointermove", (event) => {
+      pointer = event.pointerType === "touch" || event.buttons
+        ? null
+        : { view, x: event.clientX, y: event.clientY };
+    });
+    for (const eventName of ["pointerleave", "pointercancel", "pointerdown"]) {
+      view.addEventListener(eventName, () => { pointer = null; });
+    }
+  }
   const frame = () => {
+    const activeCanvas = activeMode === "3d" ? canvas : gridCanvas;
+    if (pointer?.view !== activeCanvas) pointer = null;
+    scene.hoverFixture(pointer
+      ? activeMode === "3d"
+        ? pickFixture(canvas, scene, pointer.x, pointer.y)
+        : renderers.grid.pick(pointer.x, pointer.y)
+      : null);
+
     if (activeMode === "3d") {
       const matrix = renderers.webgpu.render(scene, camera);
       labels.render(scene, matrix, query("#show-labels").checked);

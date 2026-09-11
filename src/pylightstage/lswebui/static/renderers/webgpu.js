@@ -49,7 +49,7 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
   let luminance = max(max(input.colour.r, input.colour.g), input.colour.b);
   let emissive = input.colour.rgb * (0.52 + luminance * 0.68);
   let surface = input.colour.rgb * (0.3 + diffuse * 0.62) + vec3<f32>(0.06, 0.09, 0.09) * rim;
-  let selected = step(1.5, input.colour.a);
+  let selected = clamp(input.colour.a - 1.0, 0.0, 1.0);
   let selection = vec3<f32>(0.08, 0.42, 0.34) * selected * (0.3 + rim * 0.8);
   return vec4<f32>(max(surface, emissive) + selection, 1.0);
 }

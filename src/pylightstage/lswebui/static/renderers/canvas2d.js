@@ -101,10 +101,11 @@ export class Canvas2DRenderer {
 
     hexagon(context, x, y, radius);
     const selected = scene.selectedLogicalIndices.has(logicalIndex);
-    context.strokeStyle = selected ? "#72ead8" : "#31444a";
+    const hovered = scene.hoveredLogicalIndex === logicalIndex;
+    context.strokeStyle = selected ? "#72ead8" : hovered ? "#529793" : "#31444a";
     context.lineWidth = selected
       ? Math.max(2, radius * 0.11)
-      : Math.max(1, radius * 0.045);
+      : hovered ? Math.max(1.5, radius * 0.0775) : Math.max(1, radius * 0.045);
     context.stroke();
 
     context.beginPath();
@@ -115,7 +116,7 @@ export class Canvas2DRenderer {
     context.stroke();
 
     if (radius >= 12) {
-      context.fillStyle = selected ? "#effffc" : "#91a3a8";
+      context.fillStyle = selected ? "#effffc" : hovered ? "#c0d1d2" : "#91a3a8";
       context.font = `600 ${Math.max(7, radius * 0.32)}px ui-monospace, monospace`;
       context.textAlign = "center";
       context.textBaseline = "middle";
