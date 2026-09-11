@@ -202,5 +202,6 @@ export class WebGPURenderer {
     pass.draw(this.vertexCount, scene.count);
     pass.end();
     this.device.queue.submit([encoder.finish()]);
+    return viewProjection;
   }
 }

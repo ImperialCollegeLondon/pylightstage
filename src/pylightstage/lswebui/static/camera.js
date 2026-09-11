@@ -22,7 +22,7 @@ function clearViewSelection(buttons) {
   setPressed(buttons, "view", "");
 }
 
-function pickFixture(canvas, scene, clientX, clientY) {
+export function pickFixture(canvas, scene, clientX, clientY) {
   const bounds = canvas.getBoundingClientRect();
   const ndcX = ((clientX - bounds.left) / bounds.width) * 2 - 1;
   const ndcY = 1 - ((clientY - bounds.top) / bounds.height) * 2;

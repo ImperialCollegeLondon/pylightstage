@@ -83,6 +83,10 @@ _STATIC_FILES: dict[str, tuple[str, str]] = {
         "renderers/canvas2d.js",
         "text/javascript; charset=utf-8",
     ),
+    "/assets/renderers/labels.js": (
+        "renderers/labels.js",
+        "text/javascript; charset=utf-8",
+    ),
     "/assets/renderers/webgpu.js": (
         "renderers/webgpu.js",
         "text/javascript; charset=utf-8",

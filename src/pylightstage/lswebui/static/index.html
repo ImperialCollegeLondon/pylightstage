@@ -73,7 +73,7 @@
       <section class="tool-section grow">
         <div class="section-heading compact">
           <h3>Layers</h3>
-          <span class="section-count">2</span>
+          <span class="section-count">3</span>
         </div>
         <label class="layer-row">
           <input id="show-rgb" type="checkbox" checked>
@@ -86,6 +86,11 @@
           <span class="layer-swatch white-swatch" aria-hidden="true"></span>
           <span><strong>W fixtures</strong><small>White emitters</small></span>
           <b>168</b>
+        </label>
+        <label class="layer-row">
+          <input id="show-labels" type="checkbox" checked>
+          <span class="layer-swatch" aria-hidden="true">#</span>
+          <span><strong>3D labels</strong><small>Arcs · hover for fixture #</small></span>
         </label>
       </section>
 
@@ -147,6 +152,10 @@
               <span>Horizontal</span>
             </label>
           </div>
+          <button id="select-all-fixtures" class="brush-action" type="button"
+            aria-keyshortcuts="Control+A Meta+A" title="Select all fixtures (Ctrl/Command+A)">
+            All <kbd>Ctrl A</kbd>
+          </button>
           <small><kbd>Shift</kbd> add · <kbd>Ctrl</kbd> toggle</small>
         </div>
         <canvas id="stage-view" tabindex="0"
@@ -155,13 +164,14 @@
           aria-label="Interactive LightStage fixture grid. Select a hexagon to inspect and control that logical fixture."
           hidden></canvas>
         <div class="canvas-vignette" aria-hidden="true"></div>
+        <canvas id="stage-labels" aria-hidden="true"></canvas>
         <div class="axis-indicator" aria-hidden="true">
           <span class="axis-y">Y</span>
           <span class="axis-x">X</span>
           <span class="axis-z">Z</span>
         </div>
         <p id="interaction-hint-3d" class="interaction-hint"><span aria-hidden="true">↔</span> Drag to orbit <i></i>
-          Click to paint a selection <i></i> Scroll to zoom</p>
+          Click to paint a selection <i></i> Scroll to zoom <i></i> Hover to identify</p>
         <p id="interaction-hint-2d" class="interaction-hint" hidden><span aria-hidden="true">⬡</span> Click a hexagon to
           paint a selection</p>
       </div>

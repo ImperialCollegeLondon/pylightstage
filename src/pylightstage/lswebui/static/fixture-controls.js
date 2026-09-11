@@ -5,6 +5,13 @@ import { polarizedChannel } from "./scene.js";
 
 const DEFAULT_STATUS = "Changes are sent only when you press Apply or Turn off.";
 
+function isEditableTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return target.isContentEditable || Boolean(target.closest(
+    'input, textarea, select, [role="textbox"], [role="combobox"]',
+  ));
+}
+
 export function installFixtureControls(scene, available) {
   const form = query("#fixture-control");
   const fieldset = query("fieldset", form);
@@ -165,6 +172,14 @@ export function installFixtureControls(scene, available) {
     updateDescription();
   }
 
+  function selectAllFixtures() {
+    selectedTargets = Array.from(
+      { length: scene.arcs },
+      (_, arc) => ({ target: "arc", arc }),
+    );
+    syncSelection(0);
+  }
+
   function readIntensity() {
     const values = inputs.map((input) => clamp(Number(input.value) || 0, 0, 255));
     setIntensity(values);
@@ -234,6 +249,18 @@ export function installFixtureControls(scene, available) {
   query("#clear-selection").addEventListener("click", () => {
     selectedTargets = [];
     syncSelection();
+  });
+  query("#select-all-fixtures").addEventListener("click", selectAllFixtures);
+  document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented
+        || event.key.toLowerCase() !== "a"
+        || (!event.ctrlKey && !event.metaKey)
+        || event.altKey
+        || isEditableTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    selectAllFixtures();
   });
   resetStatus(false);
 

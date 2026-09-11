@@ -777,6 +777,8 @@ def test_browser_exposes_brush_and_multi_selection_controls(running_server):
     assert status == 200
     assert 'name="selection-brush"' in page
     assert 'value="horizontal_arc"' in page
+    assert 'id="select-all-fixtures"' in page
+    assert 'aria-keyshortcuts="Control+A Meta+A"' in page
     assert 'id="selection-chips"' in page
 
     status, _, body = request(running_server, "GET", "/assets/fixture-controls.js")
@@ -786,6 +788,8 @@ def test_browser_exposes_brush_and_multi_selection_controls(running_server):
     assert "modifiers.additive" in controls
     assert "modifiers.toggle" in controls
     assert "targets: selectedTargets.map" in controls
+    assert "function selectAllFixtures()" in controls
+    assert "isEditableTarget(event.target)" in controls
 
     status, _, body = request(running_server, "GET", "/assets/scene.js")
     assert status == 200
@@ -821,6 +825,7 @@ def test_2d_grid_interleaves_the_two_halves_of_each_arc(running_server):
         ("/assets/scene.js", "text/javascript", b"StageScene"),
         ("/assets/renderers/canvas2d.js", "text/javascript", b"honeycomb view"),
         ("/assets/renderers/webgpu.js", "text/javascript", b"vertex_main"),
+        ("/assets/renderers/labels.js", "text/javascript", b"StageLabels"),
     ],
 )
 def test_packaged_web_assets_are_served(running_server, path, content_type, marker):
@@ -845,7 +850,7 @@ def test_every_browser_module_import_is_allow_listed(running_server):
         imports = re.findall(r'from\s+["\'](.+?)["\']', body.decode())
         pending.extend(urljoin(path, imported) for imported in imports)
 
-    assert len(visited) == 9
+    assert len(visited) == 10
 
 
 def test_only_allow_listed_assets_are_exposed(running_server):

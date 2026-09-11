@@ -269,13 +269,15 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 #stage-view:active { cursor: grabbing; }
 #stage-view:focus-visible, #grid-view:focus-visible { box-shadow: inset 0 0 0 2px #4a938a; }
 .canvas-shell[data-mode="2d"] .axis-indicator { display: none; }
+#stage-labels { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+.canvas-shell[data-mode="2d"] #stage-labels { display: none; }
 .brush-toolbar {
   position: absolute;
   z-index: 3;
   top: 0.85rem;
   left: 0.85rem;
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto auto auto;
   align-items: center;
   gap: 0.35rem 0.55rem;
   padding: 0.42rem;
@@ -292,6 +294,21 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 .brush-options span { display: grid; min-height: 1.65rem; padding: 0 0.5rem; place-items: center; border-radius: 0.25rem; color: #71848b; font-size: 0.59rem; }
 .brush-options input:checked + span { background: #1a2c2e; color: #bce8e2; box-shadow: inset 0 0 0 1px #31524f; }
 .brush-options input:focus-visible + span { outline: 2px solid #4a938a; outline-offset: 1px; }
+.brush-action {
+  display: flex;
+  min-height: 1.95rem;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+  border: 1px solid #31524f;
+  border-radius: 0.34rem;
+  background: #102220;
+  color: #bce8e2;
+  font-size: 0.59rem;
+  cursor: pointer;
+}
+.brush-action:hover { border-color: #4c827b; background: #17312e; }
+.brush-action:focus-visible { outline: 2px solid #4a938a; outline-offset: 1px; }
 .brush-toolbar small { grid-column: 1 / -1; color: #566a71; font-size: 0.5rem; text-align: right; }
 .brush-toolbar kbd { padding: 0.08rem 0.22rem; border: 1px solid #304047; border-radius: 0.2rem; background: #151e22; color: #83969c; font-size: 0.46rem; }
 .canvas-vignette {
@@ -414,6 +431,7 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
   .stage-stats span:nth-of-type(2), .stage-stats i:nth-of-type(2) { display: none; }
   .canvas-shell, #stage-view, #grid-view { min-height: 28rem; }
   .brush-toolbar { top: 0.55rem; left: 0.55rem; }
+  .brush-action kbd { display: none; }
   .brush-toolbar small { display: none; }
 }
 

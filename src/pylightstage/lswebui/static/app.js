@@ -4,6 +4,7 @@ import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
 import { Canvas2DRenderer } from "./renderers/canvas2d.js";
 import { WebGPURenderer } from "./renderers/webgpu.js";
+import { StageLabels } from "./renderers/labels.js";
 import { StageScene } from "./scene.js";
 
 const canvas = query("#stage-view");
@@ -123,8 +124,12 @@ function installSceneControls(scene, gridRenderer, selectFixture) {
 }
 
 function startRendering(scene, renderers) {
+  const labels = new StageLabels(canvas, query("#stage-labels"));
   const frame = () => {
-    if (activeMode === "3d") renderers.webgpu.render(scene, camera);
+    if (activeMode === "3d") {
+      const matrix = renderers.webgpu.render(scene, camera);
+      labels.render(scene, matrix, query("#show-labels").checked);
+    }
     else renderers.grid.render(scene);
     requestAnimationFrame(frame);
   };
