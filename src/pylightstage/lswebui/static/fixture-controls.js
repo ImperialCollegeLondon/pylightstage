@@ -252,7 +252,8 @@ export function installFixtureControls(scene, available) {
   });
   query("#select-all-fixtures").addEventListener("click", selectAllFixtures);
   document.addEventListener("keydown", (event) => {
-    if (event.defaultPrevented
+    if (query(".dashboard").dataset.workspace !== "manual"
+        || event.defaultPrevented
         || event.key.toLowerCase() !== "a"
         || (!event.ctrlKey && !event.metaKey)
         || event.altKey
@@ -265,6 +266,7 @@ export function installFixtureControls(scene, available) {
   resetStatus(false);
 
   return function selectFixture(logicalIndex, modifiers = {}) {
+    if (query(".dashboard").dataset.workspace !== "manual") return;
     const fixture = scene.fixtures[logicalIndex];
     const target = targetFromFixture(fixture);
     const key = targetKey(target);

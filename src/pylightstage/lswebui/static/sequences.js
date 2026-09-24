@@ -2,7 +2,7 @@ import { readServer, sequenceRequest } from "./api.js";
 import { errorMessage, query } from "./dom.js";
 
 export function installSequences(refreshMode) {
-  const dialog = query("#sequences-dialog");
+  const panel = query("#playback-panel");
   const list = query("#sequence-list");
   const status = query("#sequence-status");
   const fileInput = query("#sequence-file");
@@ -16,8 +16,8 @@ export function installSequences(refreshMode) {
   async function run(task) {
     if (busy) return;
     busy = true;
-    dialog.setAttribute("aria-busy", "true");
-    const disableControls = () => dialog.querySelectorAll("button:not(#close-sequences)").forEach((button) => { button.disabled = busy; });
+    panel.setAttribute("aria-busy", "true");
+    const disableControls = () => panel.querySelectorAll("button").forEach((button) => { button.disabled = busy; });
     disableControls();
     try {
       await task();
@@ -25,7 +25,7 @@ export function installSequences(refreshMode) {
       message(errorMessage(error), "error");
     } finally {
       busy = false;
-      dialog.removeAttribute("aria-busy");
+      panel.removeAttribute("aria-busy");
       disableControls();
     }
   }
@@ -82,11 +82,6 @@ export function installSequences(refreshMode) {
       message("Library refreshed.");
     });
   }
-  query("#open-sequences").addEventListener("click", () => {
-    dialog.showModal();
-    load();
-  });
-  query("#close-sequences").addEventListener("click", () => dialog.close());
   query("#refresh-sequences").addEventListener("click", load);
   query("#import-sequence").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
@@ -107,4 +102,5 @@ export function installSequences(refreshMode) {
     message("Manual mode requested.");
     await refreshMode();
   }));
+  return load;
 }

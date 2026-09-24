@@ -3,6 +3,7 @@ import { camera, installCameraControls, pickFixture } from "./camera.js";
 import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
 import { installSequences } from "./sequences.js";
+import { installWorkspace } from "./workspace.js";
 import { installCapture } from "./capture.js";
 import { Canvas2DRenderer } from "./renderers/canvas2d.js";
 import { WebGPURenderer } from "./renderers/webgpu.js";
@@ -182,7 +183,8 @@ async function start() {
       config.features?.fixture_control === true,
     );
     installInspector();
-    installSequences(checkConnectivity);
+    const loadSequences = installSequences(checkConnectivity);
+    installWorkspace(loadSequences, checkConnectivity);
     installCapture(checkConnectivity);
     installSceneControls(scene, renderers.grid, selectFixture);
     installModeControls(renderers);

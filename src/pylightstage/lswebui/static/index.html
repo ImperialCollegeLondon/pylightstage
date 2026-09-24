@@ -19,7 +19,6 @@
       </div>
     </div>
     <div class="topbar-meta">
-      <button id="open-sequences" class="sequence-button" type="button">Sequences</button>
       <span class="backend">Renderer <strong id="renderer-backend">detecting</strong></span>
       <div class="service-state" role="status" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
@@ -29,7 +28,7 @@
     </div>
   </header>
 
-  <main class="dashboard">
+  <main class="dashboard" data-workspace="manual">
     <aside class="toolbar toolbar-left" aria-label="Stage toolbar">
       <section class="tool-section">
         <div class="section-heading">
@@ -38,13 +37,37 @@
             <h2>Stage controls</h2>
           </div>
         </div>
-        <div class="segmented-control" aria-label="Dashboard mode">
-          <button class="segment active" type="button" data-workspace="scene" aria-pressed="true">Scene</button>
-          <button class="segment" type="button" data-workspace="capture" aria-controls="capture-panel" aria-pressed="false">Capture</button>
+        <div class="segmented-control stage-tabs" role="tablist" aria-label="Stage control mode">
+          <button id="manual-tab" class="segment active" type="button" role="tab" data-workspace="manual" aria-controls="manual-panel" aria-selected="true">Manual</button>
+          <button id="playback-tab" class="segment" type="button" role="tab" data-workspace="playback" aria-controls="playback-panel" aria-selected="false" tabindex="-1">Playback</button>
+          <button id="olat-tab" class="segment" type="button" role="tab" data-workspace="olat" aria-controls="capture-panel" aria-selected="false" tabindex="-1">OLAT</button>
         </div>
       </section>
 
-      <section id="capture-panel" class="tool-section grow" aria-labelledby="capture-title" hidden>
+      <section id="manual-panel" class="tool-section" role="tabpanel" aria-labelledby="manual-tab" tabindex="0">
+        <h3>Manual lighting</h3>
+        <p class="sequence-help">Select fixtures on the stage, then adjust their channels and intensity in the inspector.</p>
+        <button id="start-manual" class="sequence-button primary-button" type="button">Enable manual control</button>
+        <p id="manual-status" class="control-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="playback-panel" class="tool-section" role="tabpanel" aria-labelledby="playback-tab" tabindex="0" hidden>
+        <div class="sequence-heading">
+          <h3 id="sequences-title">Sequences</h3>
+        </div>
+        <p class="sequence-help">Import a sequence, then play it on the connected stage.</p>
+        <div class="sequence-toolbar">
+          <button id="import-sequence" class="sequence-button primary-button" type="button">Import file…</button>
+          <input id="sequence-file" type="file" accept=".cbor,.zst,.json" hidden>
+          <button id="refresh-sequences" class="sequence-button" type="button">Refresh</button>
+          <button id="manual-mode" class="sequence-button" type="button" title="End playback by switching the stage to Manual mode">Return to manual</button>
+        </div>
+        <p class="sequence-help">CBOR, CBOR.zst or JSON · up to 64 MiB (including expanded data)</p>
+        <p id="sequence-status" class="control-status" role="status" aria-live="polite"></p>
+        <ul id="sequence-list" aria-label="Uploaded sequences"></ul>
+      </section>
+
+      <section id="capture-panel" class="tool-section" role="tabpanel" aria-labelledby="olat-tab" tabindex="0" hidden>
         <h3 id="capture-title">OLAT — One light at a time</h3>
         <p class="sequence-help">Run a lighting sweep at the chosen capture rate.</p>
         <form id="capture-form">
@@ -150,7 +173,7 @@
         </div>
       </div>
       <div id="canvas-shell" class="canvas-shell" data-mode="3d">
-        <div class="brush-toolbar" aria-label="Selection brush">
+        <div class="brush-toolbar" data-manual-controls aria-label="Selection brush">
           <span class="brush-label">Brush</span>
           <div class="brush-options" role="radiogroup" aria-label="Selection brush type">
             <label title="Select individual logical fixtures">
@@ -194,7 +217,7 @@
       </p>
     </section>
 
-    <aside class="toolbar toolbar-right" aria-label="Fixture information toolbar">
+    <aside class="toolbar toolbar-right" data-manual-controls aria-label="Fixture information toolbar">
       <section class="tool-section">
         <div class="section-heading">
           <div>
@@ -282,22 +305,7 @@
       </form>
     </aside>
   </main>
-  <dialog id="sequences-dialog" aria-labelledby="sequences-title">
-    <div class="sequence-heading">
-      <div><p class="eyebrow">Playback library</p><h2 id="sequences-title">Sequences</h2></div>
-      <button id="close-sequences" class="sequence-button" type="button" aria-label="Close sequences">Close</button>
-    </div>
-    <p class="sequence-help">Import a sequence, then play it on the connected stage.</p>
-    <div class="sequence-toolbar">
-      <button id="import-sequence" class="sequence-button primary-button" type="button">Import file…</button>
-      <input id="sequence-file" type="file" accept=".cbor,.zst,.json" hidden>
-      <button id="refresh-sequences" class="sequence-button" type="button">Refresh</button>
-      <button id="manual-mode" class="sequence-button" type="button" title="End playback by switching the stage to Manual mode">Return to manual</button>
-    </div>
-    <p class="sequence-help">CBOR, CBOR.zst or JSON · up to 64 MiB (including expanded data)</p>
-    <p id="sequence-status" class="control-status" role="status" aria-live="polite"></p>
-    <ul id="sequence-list" aria-label="Uploaded sequences"></ul>
-  </dialog>
+
   <script type="module" src="/assets/app.js"></script>
 </body>
 

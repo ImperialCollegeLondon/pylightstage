@@ -849,7 +849,7 @@ def test_every_browser_module_import_is_allow_listed(running_server):
         imports = re.findall(r'from\s+["\'](.+?)["\']', body.decode())
         pending.extend(urljoin(path, imported) for imported in imports)
 
-    assert len(visited) == 12
+    assert len(visited) == 13
 
 
 def test_only_allow_listed_assets_are_exposed(running_server):
@@ -953,16 +953,24 @@ async def test_sequence_commands_validate_before_connecting(payload):
         await _sequence_command(ServerConfig(), payload)
 
 
-def test_sequence_dialog_and_live_mode_are_exposed(running_server):
+def test_stage_mode_tabs_and_live_mode_are_exposed(running_server):
     status, _, body = request(running_server, "GET", "/")
     assert status == 200
     page = body.decode()
-    assert 'id="sequences-dialog"' in page
+    for mode, panel in [
+        ("manual", "manual-panel"),
+        ("playback", "playback-panel"),
+        ("olat", "capture-panel"),
+    ]:
+        assert f'data-workspace="{mode}"' in page
+        assert f'aria-controls="{panel}"' in page
+        assert f'id="{panel}"' in page
+    assert 'id="sequences-dialog"' not in page
     assert 'id="stage-mode"' in page
     assert '<option value="get-mode">' not in page
     status, _, body = request(running_server, "GET", "/assets/sequences.js")
     assert status == 200
-    assert "dialog.showModal()" in body.decode()
+    assert 'query("#playback-panel")' in body.decode()
 
 
 @pytest.mark.parametrize("mode, args", [("olat", (24.5,)), ("manual", ())])

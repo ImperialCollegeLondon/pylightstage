@@ -75,6 +75,7 @@ _STATIC_FILES: dict[str, tuple[str, str]] = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/assets/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/assets/api.js": ("api.js", "text/javascript; charset=utf-8"),
+    "/assets/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"),
     "/assets/capture.js": ("capture.js", "text/javascript; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/assets/sequences.js": ("sequences.js", "text/javascript; charset=utf-8"),

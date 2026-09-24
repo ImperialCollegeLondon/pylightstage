@@ -1,20 +1,11 @@
 import { requestMode } from "./api.js";
-import { errorMessage, query, queryAll, setPressed } from "./dom.js";
+import { errorMessage, query } from "./dom.js";
 
 export function installCapture(refreshMode) {
-  const panel = query("#capture-panel");
   const form = query("#capture-form");
   const rate = query("#capture-hz");
   const status = query("#capture-status");
-  const tabs = queryAll("[data-workspace]");
   let busy = false;
-
-  tabs.forEach((tab) => tab.addEventListener("click", () => {
-    const capture = tab.dataset.workspace === "capture";
-    panel.hidden = !capture;
-    queryAll("[data-scene-controls]").forEach((section) => { section.hidden = capture; });
-    setPressed(tabs, "workspace", tab.dataset.workspace);
-  }));
 
   function validateRate() {
     rate.setCustomValidity(Number.isFinite(rate.valueAsNumber) && rate.valueAsNumber > 0
