@@ -797,9 +797,7 @@ def test_browser_exposes_brush_and_multi_selection_controls(running_server):
 
 
 def test_2d_grid_interleaves_the_two_halves_of_each_arc(running_server):
-    status, _, body = request(
-        running_server, "GET", "/assets/renderers/canvas2d.js"
-    )
+    status, _, body = request(running_server, "GET", "/assets/renderers/canvas2d.js")
 
     script = body.decode()
     assert status == 200
@@ -850,7 +848,7 @@ def test_every_browser_module_import_is_allow_listed(running_server):
         imports = re.findall(r'from\s+["\'](.+?)["\']', body.decode())
         pending.extend(urljoin(path, imported) for imported in imports)
 
-    assert len(visited) == 10
+    assert len(visited) == 11
 
 
 def test_only_allow_listed_assets_are_exposed(running_server):
@@ -868,3 +866,99 @@ def test_head_reports_content_length_without_body(running_server):
     assert head_body == b""
     assert head_headers["Content-Length"] == get_headers["Content-Length"]
     assert int(head_headers["Content-Length"]) == len(get_body)
+
+
+@pytest.mark.parametrize("extension", ["cbor", "cbor.zst", "json"])
+def test_sequence_import_decodes_and_uploads(running_server, monkeypatch, extension):
+    import zstandard as zstd
+
+    from pylightstage.models import PlaybackSequence, StageFrame
+
+    sequence = PlaybackSequence("Test sequence", 30.0, [StageFrame()])
+    uploaded = []
+
+    async def upload(_config, value):
+        uploaded.append(value)
+        return value.to_summary("sequence-id")
+
+    monkeypatch.setattr("pylightstage.lswebui.server._upload_sequence", upload)
+    payload = sequence.to_cbor()
+    if extension == "cbor.zst":
+        payload = zstd.ZstdCompressor().compress(payload)
+    elif extension == "json":
+        payload = json.dumps(sequence.to_dict()).encode()
+    status, _, body = request(
+        running_server,
+        "POST",
+        f"/api/sequences/import?filename=test.{extension}",
+        body=payload,
+    )
+    assert status == 200
+    assert uploaded == [sequence]
+    assert json.loads(body)["result"]["id"] == "sequence-id"
+
+
+@pytest.mark.parametrize(
+    "payload", [b"invalid", b"{}", b'{"name":"x","capture_hz":0,"frames":[{}]}']
+)
+def test_sequence_import_rejects_invalid_files(running_server, payload):
+    status, _, body = request(
+        running_server, "POST", "/api/sequences/import?filename=test.json", body=payload
+    )
+    assert status == 400
+    assert "Invalid sequence file" in json.loads(body)["error"]
+
+
+@pytest.mark.parametrize(
+    "action, method, args",
+    [
+        ("play", "set_mode_playback", ("sequence-id",)),
+        ("delete", "delete_sequence", ("sequence-id",)),
+        ("manual", "set_mode_manual", ()),
+    ],
+)
+async def test_sequence_commands_use_client(monkeypatch, action, method, args):
+    from pylightstage.lswebui.server import _sequence_command
+
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+    async def record(self, *values):
+        calls.append(values)
+
+    setattr(Client, method, record)
+    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    await _sequence_command(ServerConfig(), {"action": action, "id": "sequence-id"})
+    assert calls == [args]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"action": "unknown"}, {"action": "play"}, {"action": "delete", "id": 1}],
+)
+async def test_sequence_commands_validate_before_connecting(payload):
+    from pylightstage.lswebui.server import _sequence_command
+
+    with pytest.raises(ValueError):
+        await _sequence_command(ServerConfig(), payload)
+
+
+def test_sequence_dialog_and_live_mode_are_exposed(running_server):
+    status, _, body = request(running_server, "GET", "/")
+    assert status == 200
+    page = body.decode()
+    assert 'id="sequences-dialog"' in page
+    assert 'id="stage-mode"' in page
+    assert '<option value="get-mode">' not in page
+    status, _, body = request(running_server, "GET", "/assets/sequences.js")
+    assert status == 200
+    assert "dialog.showModal()" in body.decode()

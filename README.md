@@ -165,6 +165,13 @@ hexagon per logical fixture. A compact dashboard switch changes views; when
 WebGPU is unavailable, the grid remains available on its own. The scene model is
 renderer-neutral, so state and fixture controls stay synchronized between views.
 
+The **Sequences** button opens the playback library. Import `.cbor`, `.cbor.zst`,
+or `.json` sequence files (up to 64 MiB, including expanded data), inspect their
+frame count, capture rate and duration, and play or delete uploaded sequences.
+**Return to manual** ends playback by switching the stage to Manual mode.
+The current stage mode appears beside the connection status while reachable,
+refreshing every three seconds.
+
 Routine settings are available from the command line:
 
 ```bash

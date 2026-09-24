@@ -19,10 +19,12 @@
       </div>
     </div>
     <div class="topbar-meta">
+      <button id="open-sequences" class="sequence-button" type="button">Sequences</button>
       <span class="backend">Renderer <strong id="renderer-backend">detecting</strong></span>
       <div class="service-state" role="status" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="service-status">Starting</span>
+        <span id="stage-mode" class="live-pill" hidden></span>
       </div>
     </div>
   </header>
@@ -105,8 +107,6 @@
           <div class="inspect-controls">
             <select id="inspect-action" name="action">
               <option value="get-config">Configuration</option>
-              <option value="get-mode">Current mode</option>
-              <option value="list-sequences">Sequences</option>
             </select>
             <button type="submit">Read</button>
           </div>
@@ -268,6 +268,22 @@
       </form>
     </aside>
   </main>
+  <dialog id="sequences-dialog" aria-labelledby="sequences-title">
+    <div class="sequence-heading">
+      <div><p class="eyebrow">Playback library</p><h2 id="sequences-title">Sequences</h2></div>
+      <button id="close-sequences" class="sequence-button" type="button" aria-label="Close sequences">Close</button>
+    </div>
+    <p class="sequence-help">Import a sequence, then play it on the connected stage.</p>
+    <div class="sequence-toolbar">
+      <button id="import-sequence" class="sequence-button primary-button" type="button">Import file…</button>
+      <input id="sequence-file" type="file" accept=".cbor,.zst,.json" hidden>
+      <button id="refresh-sequences" class="sequence-button" type="button">Refresh</button>
+      <button id="manual-mode" class="sequence-button" type="button" title="End playback by switching the stage to Manual mode">Return to manual</button>
+    </div>
+    <p class="sequence-help">CBOR, CBOR.zst or JSON · up to 64 MiB (including expanded data)</p>
+    <p id="sequence-status" class="control-status" role="status" aria-live="polite"></p>
+    <ul id="sequence-list" aria-label="Uploaded sequences"></ul>
+  </dialog>
   <script type="module" src="/assets/app.js"></script>
 </body>
 

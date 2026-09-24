@@ -2,6 +2,7 @@ import { loadConfiguration, readServer } from "./api.js";
 import { camera, installCameraControls, pickFixture } from "./camera.js";
 import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
+import { installSequences } from "./sequences.js";
 import { Canvas2DRenderer } from "./renderers/canvas2d.js";
 import { WebGPURenderer } from "./renderers/webgpu.js";
 import { StageLabels } from "./renderers/labels.js";
@@ -13,6 +14,7 @@ const canvasShell = query("#canvas-shell");
 const backend = query("#renderer-backend");
 const endpoint = query("#stage-endpoint");
 const status = query("#service-status");
+const stageMode = query("#stage-mode");
 const connectionStatusDot = query(".mini-status");
 const fallbackNote = query("#fallback-note");
 const viewButtons = queryAll("[data-view]");
@@ -26,16 +28,25 @@ function setConnectivityStatus(state, message, detail = "") {
   status.dataset.state = state;
   status.title = detail;
   connectionStatusDot.dataset.state = state;
+  if (state !== "ready") stageMode.hidden = true;
 }
 
+let connectivityTimer;
+let connectivityPending = false;
 async function checkConnectivity() {
+  if (connectivityPending) return;
+  connectivityPending = true;
+  window.clearTimeout(connectivityTimer);
   try {
-    await readServer("get-mode");
+    const mode = await readServer("get-mode");
     setConnectivityStatus("ready", "Ready", "LightStage server is reachable.");
+    stageMode.textContent = mode ? `Mode: ${mode}` : "Mode: idle";
+    stageMode.hidden = false;
   } catch (error) {
     setConnectivityStatus("error", "Unavailable", errorMessage(error));
   } finally {
-    window.setTimeout(checkConnectivity, CONNECTIVITY_CHECK_INTERVAL_MS);
+    connectivityPending = false;
+    connectivityTimer = window.setTimeout(checkConnectivity, CONNECTIVITY_CHECK_INTERVAL_MS);
   }
 }
 
@@ -170,6 +181,7 @@ async function start() {
       config.features?.fixture_control === true,
     );
     installInspector();
+    installSequences(checkConnectivity);
     installSceneControls(scene, renderers.grid, selectFixture);
     installModeControls(renderers);
     startRendering(scene, renderers);

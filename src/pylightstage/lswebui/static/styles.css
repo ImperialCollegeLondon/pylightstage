@@ -438,3 +438,25 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.sequence-button { padding: 0.5rem 0.7rem; border: 1px solid #33454b; border-radius: 0.4rem; background: #122026; color: #c5d5da; font-size: 0.72rem; cursor: pointer; }
+.sequence-button:disabled { opacity: 0.5; cursor: wait; }
+.sequence-button.primary-button { background: #1d695f; border-color: #398278; color: #effffb; }
+.sequence-button.danger-button { background: #211316; border-color: #59343a; color: #df929a; }
+#sequences-dialog { width: min(42rem, calc(100vw - 2rem)); max-height: 85vh; padding: 1.3rem; border: 1px solid #33454b; border-radius: 0.8rem; background: #0c1418; color: #d7e4e7; box-shadow: 0 1rem 5rem #0009; }
+#sequences-dialog::backdrop { background: #000a; }
+.sequence-heading, .sequence-toolbar, .sequence-actions { display: flex; align-items: center; gap: 0.5rem; }
+.sequence-heading { justify-content: space-between; }
+.sequence-toolbar { margin-top: 1rem; flex-wrap: wrap; }
+.sequence-help { margin-top: 0.6rem; font-size: 0.72rem; color: #8b9fa7; line-height: 1.5; }
+#sequence-status { font-size: 0.75rem; }
+#sequence-list { list-style: none; padding: 0; margin: 1rem 0 0; }
+#sequence-list li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.9rem 0; border-top: 1px solid var(--line); font-size: 0.8rem; }
+#sequence-list li > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+#sequence-list small { display: block; margin-top: 0.35rem; color: #8b9fa7; font-size: 0.68rem; }
+#sequence-list .sequence-id { font-family: ui-monospace, monospace; font-size: 0.6rem; }
+@media (max-width: 760px) {
+  .topbar-meta { gap: 0.5rem; }
+  .service-state { flex-wrap: wrap; justify-content: flex-end; gap: 0.35rem; }
+  #sequence-list li { flex-wrap: wrap; }
+}

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
+import math
 import socket
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, is_dataclass
@@ -14,14 +16,17 @@ from importlib.resources import files
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+import zstandard as zstd
+
 from ..client import LightStageClient
 from ..lscli import DEFAULT_URI
-from ..models import ColorMode, PolarizationMode
+from ..models import ColorMode, PlaybackSequence, PolarizationMode
 from ..utils import color_mode, polarization_mode, validate_index, validate_intensity
 
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8000
 _MAX_REQUEST_BYTES = 32_768
+_MAX_SEQUENCE_BYTES = 64 * 1024 * 1024
 _JSON_TYPE = "application/json; charset=utf-8"
 _CSP = (
     "default-src 'self'; connect-src 'self' ws: wss:; "
@@ -71,6 +76,7 @@ _STATIC_FILES: dict[str, tuple[str, str]] = {
     "/assets/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/assets/api.js": ("api.js", "text/javascript; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/assets/sequences.js": ("sequences.js", "text/javascript; charset=utf-8"),
     "/assets/camera.js": ("camera.js", "text/javascript; charset=utf-8"),
     "/assets/dom.js": ("dom.js", "text/javascript; charset=utf-8"),
     "/assets/fixture-controls.js": (
@@ -255,6 +261,74 @@ async def _inspect_server(config: ServerConfig, action: str) -> Any:
         return await getattr(client, method_name)()
 
 
+def _decode_sequence(payload: bytes, filename: str) -> PlaybackSequence:
+    """Decode an uploaded file without writing it to the local filesystem."""
+    try:
+        if filename.endswith(".zst"):
+            with zstd.ZstdDecompressor().stream_reader(io.BytesIO(payload)) as reader:
+                payload = reader.read(_MAX_SEQUENCE_BYTES + 1)
+            if len(payload) > _MAX_SEQUENCE_BYTES:
+                raise ValueError("Expanded sequence exceeds 64 MiB")
+        sequence = (
+            PlaybackSequence.from_dict(json.loads(payload))
+            if filename.endswith(".json")
+            else PlaybackSequence.from_cbor(payload)
+        )
+        if not isinstance(sequence.name, str) or not sequence.name.strip():
+            raise ValueError("Sequence name must not be empty")
+        if (
+            isinstance(sequence.capture_hz, bool)
+            or not math.isfinite(sequence.capture_hz)
+            or sequence.capture_hz <= 0
+        ):
+            raise ValueError("capture_hz must be a positive finite number")
+        if not sequence.frames:
+            raise ValueError("Sequence must contain at least one frame")
+        for frame in sequence.frames:
+            for grid in (frame.white_fixtures, frame.rgb_fixtures):
+                if not grid:
+                    continue
+                if len(grid) != _NUM_ARCS or any(
+                    len(row) != _LIGHTS_PER_ARC for row in grid
+                ):
+                    raise ValueError(
+                        "Fixture grids must have 12 arcs and 14 lights per arc"
+                    )
+                for row in grid:
+                    for value in row:
+                        if len(value) != 3 or any(
+                            type(v) is not int or not 0 <= v <= 65535 for v in value
+                        ):
+                            raise ValueError(
+                                "Fixture values must be three integers from 0 to 65535"
+                            )
+        return sequence
+    except Exception as exc:
+        raise ValueError(f"Invalid sequence file: {exc}") from exc
+
+
+async def _sequence_command(config: ServerConfig, payload: dict[str, Any]) -> Any:
+    action = payload.get("action")
+    if action not in ("play", "delete", "manual"):
+        raise ValueError("action must be play, delete, or manual")
+    sequence_id = payload.get("id")
+    if action != "manual" and (
+        not isinstance(sequence_id, str) or not sequence_id.strip()
+    ):
+        raise ValueError("Sequence id is required")
+    async with LightStageClient(uri=config.lightstage_uri) as client:
+        if action == "play":
+            return await client.set_mode_playback(sequence_id)
+        if action == "delete":
+            return await client.delete_sequence(sequence_id)
+        return await client.set_mode_manual()
+
+
+async def _upload_sequence(config: ServerConfig, sequence: PlaybackSequence) -> Any:
+    async with LightStageClient(uri=config.lightstage_uri) as client:
+        return await client.upload_sequence(sequence)
+
+
 def _json_default(value: object) -> object:
     if isinstance(value, Enum):
         return value.value
@@ -334,11 +408,28 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             path = unquote(urlsplit(self.path).path)
-            if path != "/api/fixture":
+            if path not in ("/api/fixture", "/api/sequences", "/api/sequences/import"):
                 self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed")
                 return
             try:
+                if path == "/api/sequences/import":
+                    size = int(self.headers.get("Content-Length", ""))
+                    if not 0 < size <= _MAX_SEQUENCE_BYTES:
+                        raise ValueError(
+                            "Sequence file must be between 1 byte and 64 MiB"
+                        )
+                    filename = parse_qs(urlsplit(self.path).query).get(
+                        "filename", [""]
+                    )[0]
+                    sequence = _decode_sequence(self.rfile.read(size), filename.lower())
+                    result = asyncio.run(_upload_sequence(config, sequence))
+                    self._send_json({"result": result}, head_only=False)
+                    return
                 payload = self._read_json_object()
+                if path == "/api/sequences":
+                    result = asyncio.run(_sequence_command(config, payload))
+                    self._send_json({"result": result}, head_only=False)
+                    return
                 asyncio.run(_apply_fixture_control(config, payload))
             except Exception as exc:  # noqa: BLE001
                 self._send_stage_error(exc, "command")

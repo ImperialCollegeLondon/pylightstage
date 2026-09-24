@@ -38,3 +38,16 @@ export async function controlFixture(payload) {
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
 }
+
+export async function sequenceRequest(payload, file = null) {
+  const response = await fetch(file
+    ? `/api/sequences/import?filename=${encodeURIComponent(file.name)}`
+    : "/api/sequences", {
+    method: "POST",
+    headers: { "Content-Type": file ? "application/octet-stream" : "application/json" },
+    body: file || JSON.stringify(payload),
+  });
+  const result = await parseJson(response, ({ status }) => `Sequence request returned an invalid response (${status}).`);
+  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  return result.result;
+}
