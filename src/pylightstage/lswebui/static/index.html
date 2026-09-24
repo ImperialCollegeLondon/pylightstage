@@ -39,12 +39,26 @@
           </div>
         </div>
         <div class="segmented-control" aria-label="Dashboard mode">
-          <button class="segment active" type="button" aria-pressed="true">Scene</button>
-          <button class="segment" type="button" aria-pressed="false" disabled>Capture</button>
+          <button class="segment active" type="button" data-workspace="scene" aria-pressed="true">Scene</button>
+          <button class="segment" type="button" data-workspace="capture" aria-controls="capture-panel" aria-pressed="false">Capture</button>
         </div>
       </section>
 
-      <section class="tool-section">
+      <section id="capture-panel" class="tool-section grow" aria-labelledby="capture-title" hidden>
+        <h3 id="capture-title">OLAT — One light at a time</h3>
+        <p class="sequence-help">Run a lighting sweep at the chosen capture rate.</p>
+        <form id="capture-form">
+          <label for="capture-hz">Capture rate (Hz)</label>
+          <input id="capture-hz" type="number" step="any" value="30" required>
+          <div class="control-actions">
+            <button id="capture-manual" class="control-button" type="button">Return to manual</button>
+            <button class="control-button primary-button" type="submit">Start OLAT</button>
+          </div>
+        </form>
+        <p id="capture-status" class="control-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="tool-section" data-scene-controls>
         <div class="section-heading compact">
           <h3>View</h3>
           <span id="view-kind" class="section-count">3D</span>
@@ -72,7 +86,7 @@
         </div>
       </section>
 
-      <section class="tool-section grow">
+      <section class="tool-section grow" data-scene-controls>
         <div class="section-heading compact">
           <h3>Layers</h3>
           <span class="section-count">3</span>

@@ -172,6 +172,11 @@ frame count, capture rate and duration, and play or delete uploaded sequences.
 The current stage mode appears beside the connection status while reachable,
 refreshing every three seconds.
 
+The **Capture** tab offers OLAT (one light at a time). Enter a positive capture
+rate in Hz and select **Start OLAT**, or select **Return to manual** to request
+Manual mode. Status messages acknowledge requests; capture progress and completion
+are not tracked.
+
 Routine settings are available from the command line:
 
 ```bash

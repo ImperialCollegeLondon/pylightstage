@@ -39,6 +39,17 @@ export async function controlFixture(payload) {
   return result;
 }
 
+export async function requestMode(payload) {
+  const response = await fetch("/api/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await parseJson(response, ({ status }) => `Mode request returned an invalid response (${status}).`);
+  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  return result.result;
+}
+
 export async function sequenceRequest(payload, file = null) {
   const response = await fetch(file
     ? `/api/sequences/import?filename=${encodeURIComponent(file.name)}`

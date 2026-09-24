@@ -14,6 +14,7 @@ from pylightstage.lswebui import DEFAULT_BIND, DEFAULT_PORT, ServerConfig, run
 from pylightstage.lswebui.server import (
     _apply_fixture_control,
     _inspect_server,
+    _mode_command,
     create_server,
 )
 
@@ -848,7 +849,7 @@ def test_every_browser_module_import_is_allow_listed(running_server):
         imports = re.findall(r'from\s+["\'](.+?)["\']', body.decode())
         pending.extend(urljoin(path, imported) for imported in imports)
 
-    assert len(visited) == 11
+    assert len(visited) == 12
 
 
 def test_only_allow_listed_assets_are_exposed(running_server):
@@ -962,3 +963,74 @@ def test_sequence_dialog_and_live_mode_are_exposed(running_server):
     status, _, body = request(running_server, "GET", "/assets/sequences.js")
     assert status == 200
     assert "dialog.showModal()" in body.decode()
+
+
+@pytest.mark.parametrize("mode, args", [("olat", (24.5,)), ("manual", ())])
+def test_mode_endpoint_dispatches(running_server, monkeypatch, mode, args):
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            assert kwargs == {"uri": "ws://test-stage:8080/ws"}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def set_mode_olat(self, rate):
+            calls.append((rate,))
+
+        async def set_mode_manual(self):
+            calls.append(())
+
+    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    payload = {"mode": mode}
+    if mode == "olat":
+        payload["capture_hz"] = 24.5
+    status, _, body = request(
+        running_server, "POST", "/api/mode", body=json.dumps(payload)
+    )
+    assert status == 200
+    assert json.loads(body) == {"result": None}
+    assert calls == [args]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"mode": "olat", "capture_hz": rate}
+        for rate in (None, True, "30", 0, -1, float("nan"), float("inf"))
+    ]
+    + [{"mode": "olat"}, {"mode": "unknown"}, {"mode": "manual", "capture_hz": 30}],
+)
+async def test_mode_validation_precedes_connection(monkeypatch, payload):
+    def unexpected_connection(**kwargs):
+        pytest.fail("Invalid mode request opened a connection")
+
+    monkeypatch.setattr(
+        "pylightstage.lswebui.server.LightStageClient", unexpected_connection
+    )
+    with pytest.raises(ValueError):
+        await _mode_command(ServerConfig(), payload)
+
+
+@pytest.mark.parametrize(
+    "error, expected_status",
+    [
+        (ValueError("invalid rate"), 400),
+        (TimeoutError("timed out"), 504),
+        (RuntimeError("rejected"), 502),
+    ],
+)
+def test_mode_endpoint_errors(running_server, monkeypatch, error, expected_status):
+    async def fail(*args):
+        raise error
+
+    monkeypatch.setattr("pylightstage.lswebui.server._mode_command", fail)
+    status, _, body = request(
+        running_server, "POST", "/api/mode", body='{"mode":"olat"}'
+    )
+    assert status == expected_status
+    assert str(error) in json.loads(body)["error"]

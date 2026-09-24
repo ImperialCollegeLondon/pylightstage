@@ -75,6 +75,7 @@ _STATIC_FILES: dict[str, tuple[str, str]] = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/assets/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/assets/api.js": ("api.js", "text/javascript; charset=utf-8"),
+    "/assets/capture.js": ("capture.js", "text/javascript; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/assets/sequences.js": ("sequences.js", "text/javascript; charset=utf-8"),
     "/assets/camera.js": ("camera.js", "text/javascript; charset=utf-8"),
@@ -307,6 +308,22 @@ def _decode_sequence(payload: bytes, filename: str) -> PlaybackSequence:
         raise ValueError(f"Invalid sequence file: {exc}") from exc
 
 
+async def _mode_command(config: ServerConfig, payload: dict[str, Any]) -> Any:
+    mode = payload.get("mode")
+    if mode not in ("olat", "manual"):
+        raise ValueError("mode must be olat or manual")
+    rate = payload.get("capture_hz")
+    if mode == "olat":
+        if type(rate) not in (int, float) or not math.isfinite(rate) or rate <= 0:
+            raise ValueError("capture_hz must be a positive finite number")
+    elif "capture_hz" in payload:
+        raise ValueError("capture_hz is only valid for olat mode")
+    async with LightStageClient(uri=config.lightstage_uri) as client:
+        if mode == "olat":
+            return await client.set_mode_olat(rate)
+        return await client.set_mode_manual()
+
+
 async def _sequence_command(config: ServerConfig, payload: dict[str, Any]) -> Any:
     action = payload.get("action")
     if action not in ("play", "delete", "manual"):
@@ -408,7 +425,12 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
 
         def do_POST(self) -> None:
             path = unquote(urlsplit(self.path).path)
-            if path not in ("/api/fixture", "/api/sequences", "/api/sequences/import"):
+            if path not in (
+                "/api/fixture",
+                "/api/mode",
+                "/api/sequences",
+                "/api/sequences/import",
+            ):
                 self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed")
                 return
             try:
@@ -426,6 +448,10 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                     self._send_json({"result": result}, head_only=False)
                     return
                 payload = self._read_json_object()
+                if path == "/api/mode":
+                    result = asyncio.run(_mode_command(config, payload))
+                    self._send_json({"result": result}, head_only=False)
+                    return
                 if path == "/api/sequences":
                     result = asyncio.run(_sequence_command(config, payload))
                     self._send_json({"result": result}, head_only=False)
