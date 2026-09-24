@@ -62,3 +62,14 @@ export async function sequenceRequest(payload, file = null) {
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result.result;
 }
+
+export async function triggerCamera() {
+  const response = await fetch("/api/capture", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const result = await parseJson(response, ({ status }) => `Camera capture returned an invalid response (${status}).`);
+  if (!response.ok) throw new Error(result.error || `Capture failed (${response.status})`);
+  return result.result;
+}

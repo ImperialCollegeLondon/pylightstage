@@ -1,4 +1,4 @@
-import { requestMode } from "./api.js";
+import { requestMode, triggerCamera } from "./api.js";
 import { errorMessage, query } from "./dom.js";
 
 export function installCapture(refreshMode) {
@@ -44,4 +44,73 @@ export function installCapture(refreshMode) {
     changeMode("olat");
   });
   query("#capture-manual").addEventListener("click", () => changeMode("manual"));
+}
+
+export function installCameraCapture() {
+  const form = query("#camera-interval-form");
+  const interval = query("#camera-interval");
+  const trigger = query("#camera-trigger");
+  const start = query("#camera-start");
+  const stop = query("#camera-stop");
+  const status = query("#camera-status");
+  let running = false;
+  let busy = false;
+  let timer;
+
+  function updateControls() {
+    trigger.disabled = busy || running;
+    start.disabled = busy || running;
+    interval.disabled = running;
+    stop.disabled = !running;
+  }
+
+  function stopCaptures(message = "Automatic capture stopped.") {
+    running = false;
+    window.clearTimeout(timer);
+    status.textContent = message;
+    status.dataset.state = "";
+    updateControls();
+  }
+
+  async function capture() {
+    if (busy) return;
+    busy = true;
+    updateControls();
+    status.textContent = "Capturing…";
+    status.dataset.state = "working";
+    try {
+      await triggerCamera();
+      status.textContent = running
+        ? `Capture triggered. Next capture in ${interval.valueAsNumber} seconds.`
+        : "Capture triggered.";
+      status.dataset.state = "success";
+      if (running) timer = window.setTimeout(capture, interval.valueAsNumber * 1000);
+    } catch (error) {
+      stopCaptures(`${errorMessage(error)} Automatic capture is stopped. Check that the stage is in Manual mode before retrying.`);
+      status.dataset.state = "error";
+    } finally {
+      busy = false;
+      updateControls();
+    }
+  }
+
+  function validateInterval() {
+    const value = interval.valueAsNumber;
+    interval.setCustomValidity(Number.isFinite(value) && value >= 0.1 && value <= 86400
+      ? "" : "Enter an interval between 0.1 and 86400 seconds.");
+  }
+  interval.addEventListener("input", validateInterval);
+  trigger.addEventListener("click", capture);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    validateInterval();
+    if (busy || running || !form.reportValidity()) return;
+    running = true;
+    capture();
+  });
+  stop.addEventListener("click", () => stopCaptures());
+  window.addEventListener("pagehide", () => stopCaptures());
+  return (mode) => {
+    if (running && mode !== "Manual") stopCaptures("Automatic capture stopped: Manual mode is unavailable.");
+  };
 }

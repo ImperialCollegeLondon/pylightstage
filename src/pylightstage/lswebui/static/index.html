@@ -19,6 +19,26 @@
       </div>
     </div>
     <div class="topbar-meta">
+      <details class="session-details">
+        <summary>Session</summary>
+        <div class="connection-card" aria-label="Connection details">
+        <div class="connection-title">
+          <span class="mini-status" aria-hidden="true"></span>
+          <strong>Current Session</strong>
+        </div>
+        <span id="stage-endpoint">Loading…</span>
+        <form id="server-inspector" class="server-inspector">
+          <label for="inspect-action">Inspect server</label>
+          <div class="inspect-controls">
+            <select id="inspect-action" name="action">
+              <option value="get-config">Configuration</option>
+            </select>
+            <button type="submit">Read</button>
+          </div>
+          <pre id="inspect-result" role="status" aria-live="polite" hidden></pre>
+        </form>
+        </div>
+      </details>
       <span class="backend">Renderer <strong id="renderer-backend">detecting</strong></span>
       <div class="service-state" role="status" aria-live="polite">
         <span class="status-dot" aria-hidden="true"></span>
@@ -133,22 +153,19 @@
         </label>
       </section>
 
-      <section class="connection-card" aria-label="Connection details">
-        <div class="connection-title">
-          <span class="mini-status" aria-hidden="true"></span>
-          <strong>Current Session</strong>
-        </div>
-        <span id="stage-endpoint">Loading…</span>
-        <form id="server-inspector" class="server-inspector">
-          <label for="inspect-action">Inspect server</label>
-          <div class="inspect-controls">
-            <select id="inspect-action" name="action">
-              <option value="get-config">Configuration</option>
-            </select>
-            <button type="submit">Read</button>
+      <section class="tool-section camera-control" aria-labelledby="camera-control-title">
+        <h3 id="camera-control-title">Camera control</h3>
+        <p class="sequence-help">Capture in Manual mode. Automatic capture runs while this page is open.</p>
+        <button id="camera-trigger" class="sequence-button primary-button" type="button">Capture now</button>
+        <form id="camera-interval-form">
+          <label for="camera-interval">Interval between captures (seconds)</label>
+          <input id="camera-interval" type="number" min="0.1" max="86400" step="any" value="5" required>
+          <div class="control-actions">
+            <button id="camera-start" class="sequence-button" type="submit">Start automatic</button>
+            <button id="camera-stop" class="sequence-button" type="button" disabled>Stop</button>
           </div>
-          <pre id="inspect-result" role="status" aria-live="polite" hidden></pre>
         </form>
+        <p id="camera-status" class="control-status" role="status" aria-live="polite">Ready to capture in Manual mode.</p>
       </section>
     </aside>
 

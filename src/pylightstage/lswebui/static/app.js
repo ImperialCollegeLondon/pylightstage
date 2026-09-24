@@ -4,7 +4,7 @@ import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
 import { installSequences } from "./sequences.js";
 import { installWorkspace } from "./workspace.js";
-import { installCapture } from "./capture.js";
+import { installCapture, installCameraCapture } from "./capture.js";
 import { Canvas2DRenderer } from "./renderers/canvas2d.js";
 import { WebGPURenderer } from "./renderers/webgpu.js";
 import { StageLabels } from "./renderers/labels.js";
@@ -22,6 +22,7 @@ const fallbackNote = query("#fallback-note");
 const viewButtons = queryAll("[data-view]");
 const modeButtons = queryAll(".view-mode-switch [data-mode]");
 let activeMode = "3d";
+const updateCameraMode = installCameraCapture();
 
 const CONNECTIVITY_CHECK_INTERVAL_MS = 3000;
 
@@ -41,10 +42,12 @@ async function checkConnectivity() {
   window.clearTimeout(connectivityTimer);
   try {
     const mode = await readServer("get-mode");
+    updateCameraMode(mode);
     setConnectivityStatus("ready", "Ready", "LightStage server is reachable.");
     stageMode.textContent = mode ? `Mode: ${mode}` : "Mode: idle";
     stageMode.hidden = false;
   } catch (error) {
+    updateCameraMode(null);
     setConnectivityStatus("error", "Unavailable", errorMessage(error));
   } finally {
     connectivityPending = false;

@@ -309,6 +309,11 @@ def _decode_sequence(payload: bytes, filename: str) -> PlaybackSequence:
         raise ValueError(f"Invalid sequence file: {exc}") from exc
 
 
+async def _trigger_camera(config: ServerConfig) -> Any:
+    async with LightStageClient(uri=config.lightstage_uri) as client:
+        return await client.trigger()
+
+
 async def _mode_command(config: ServerConfig, payload: dict[str, Any]) -> Any:
     mode = payload.get("mode")
     if mode not in ("olat", "manual"):
@@ -429,6 +434,7 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
             if path not in (
                 "/api/fixture",
                 "/api/mode",
+                "/api/capture",
                 "/api/sequences",
                 "/api/sequences/import",
             ):
@@ -449,6 +455,10 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                     self._send_json({"result": result}, head_only=False)
                     return
                 payload = self._read_json_object()
+                if path == "/api/capture":
+                    result = asyncio.run(_trigger_camera(config))
+                    self._send_json({"result": result}, head_only=False)
+                    return
                 if path == "/api/mode":
                     result = asyncio.run(_mode_command(config, payload))
                     self._send_json({"result": result}, head_only=False)

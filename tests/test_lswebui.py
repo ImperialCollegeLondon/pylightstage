@@ -1042,3 +1042,42 @@ def test_mode_endpoint_errors(running_server, monkeypatch, error, expected_statu
     )
     assert status == expected_status
     assert str(error) in json.loads(body)["error"]
+
+
+def test_camera_capture_endpoint_triggers_client(running_server, monkeypatch):
+    calls = []
+
+    class Client:
+        def __init__(self, *, uri):
+            assert uri == "ws://test-stage:8080/ws"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def trigger(self):
+            calls.append("capture")
+
+    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    status, _, body = request(running_server, "POST", "/api/capture", body="{}")
+    assert status == 200
+    assert json.loads(body) == {"result": None}
+    assert calls == ["capture"]
+
+
+@pytest.mark.parametrize(
+    "error, expected_status",
+    [(TimeoutError("timeout"), 504), (RuntimeError("Manual mode required"), 502)],
+)
+def test_camera_capture_endpoint_errors(
+    running_server, monkeypatch, error, expected_status
+):
+    async def fail(*args):
+        raise error
+
+    monkeypatch.setattr("pylightstage.lswebui.server._trigger_camera", fail)
+    status, _, body = request(running_server, "POST", "/api/capture", body="{}")
+    assert status == expected_status
+    assert str(error) in json.loads(body)["error"]

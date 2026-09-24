@@ -414,8 +414,8 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 .control-status[data-state="success"] { color: #6fcabd; }
 .control-status[data-state="error"] { color: #df828c; }
 
-#capture-form label { display: block; margin: 0.8rem 0 0.4rem; color: #72858c; font-size: 0.58rem; }
-#capture-hz { width: 100%; min-height: 2.15rem; padding: 0 0.55rem; border: 1px solid #2a3a40; border-radius: 0.38rem; background: #0a1114; color: #bdc9cd; font-size: 0.65rem; }
+#capture-form label, #camera-interval-form label { display: block; margin: 0.8rem 0 0.4rem; color: #72858c; font-size: 0.58rem; }
+#capture-hz, #camera-interval { width: 100%; min-height: 2.15rem; padding: 0 0.55rem; border: 1px solid #2a3a40; border-radius: 0.38rem; background: #0a1114; color: #bdc9cd; font-size: 0.65rem; }
 #capture-manual { border: 1px solid #33454b; background: #122026; }
 
 @media (max-width: 1100px) {
@@ -483,3 +483,9 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
   .canvas-shell { min-height: 0; }
   #stage-view, #grid-view { position: absolute; inset: 0; min-height: 0; }
 }
+
+.session-details { position: relative; }
+.session-details summary { cursor: pointer; color: #aebec3; }
+.session-details .connection-card { position: absolute; top: 1.6rem; right: 0; width: min(20rem, calc(100vw - 2rem)); margin: 0; box-shadow: 0 0.8rem 2rem #0008; }
+.camera-control { margin-top: auto; }
+#camera-trigger { width: 100%; margin-top: 0.8rem; }
