@@ -28,6 +28,60 @@ try {
   const page = new DOMParser().parseFromString(await (await originalFetch("/index.html")).text(), "text/html");
   document.body.replaceChildren(...page.body.children);
 
+  const { LightingSimulation, olatSequence, installSimulation } = await import("/assets/simulation.js");
+  await test("simulation clock, pause, seek, held channels and isolation", () => {
+    const applied = new StageScene(2, 2);
+    applied.setFixtureIntensity(0, 0, "white", [20, 30, 40]);
+    const sim = new LightingSimulation(applied);
+    const sequence = olatSequence(applied, 10, "rgb");
+    sequence.frames[1].white_fixtures = [];
+    sequence.frames[2].white_fixtures = [];
+    sim.start(sequence, 1000);
+    equal(sim.scene.fixtures[0].intensity.rgb, [255, 255, 255]);
+    sim.tick(1250);
+    equal(sim.frame, 2);
+    equal(sim.scene.fixtures[0].intensity.white, [0, 0, 0]);
+    equal(sim.scene.fixtures[2].intensity.rgb, [255, 255, 255]);
+    sim.toggle(1250);
+    sim.tick(2000);
+    equal(sim.frame, 2);
+    sim.seek(0, 2000);
+    sim.toggle(2000);
+    sim.tick(2101);
+    equal(sim.frame, 1);
+    sim.tick(2500);
+    equal(sim.frame, 3);
+    assert(!sim.playing);
+    equal(applied.fixtures[0].intensity.white, [20, 30, 40]);
+    equal(applied.fixtures[0].intensity.rgb, [0, 0, 0]);
+    sim.stop();
+    assert(!sim.active);
+    sim.start({ capture_hz: 1, frames: [{}] }, 0);
+    equal(sim.scene.fixtures[0].intensity.white, [20, 30, 40]);
+    throws(() => sim.start({ capture_hz: 0, frames: [{}] }));
+  });
+
+  await test("simulation controls render locally and restore the applied scene", () => {
+    window.fetch = () => { throw new Error("OLAT preview must not use the network"); };
+    const applied = new StageScene();
+    const preview = installSimulation(applied);
+    document.querySelector("#simulate-olat").click();
+    assert(!document.querySelector("#simulation-controls").hidden);
+    document.querySelector("#simulation-pause").click();
+    const slider = document.querySelector("#simulation-frame");
+    slider.value = "12";
+    slider.dispatchEvent(new Event("input"));
+    const scene = preview.renderScene(applied);
+    assert(scene !== applied);
+    equal(scene.fixtures[12].intensity.rgb, [255, 255, 255]);
+    equal(applied.fixtures[12].intensity.rgb, [0, 0, 0]);
+    applied.setLayerVisibility("rgb", false);
+    equal(preview.renderScene(applied).visibility.rgb, false);
+    document.querySelector("#simulation-stop").click();
+    assert(preview.renderScene(applied) === applied);
+    assert(document.querySelector("#simulation-label").hidden);
+  });
+
   await test("layout is finite and paired", () => {
     const scene = new StageScene();
     equal(scene.fixtures.length, 168);

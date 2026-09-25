@@ -177,6 +177,17 @@ rate in Hz and select **Start OLAT**, or select **Return to manual** to request
 Manual mode. Status messages acknowledge requests; capture progress and completion
 are not tracked.
 
+For local previews, select **Simulate OLAT** in the OLAT tab or choose a file
+under **Simulate a local playback file** in Playback. Both animate fixture output
+on the 3D model or 2D grid without sending hardware commands, even when the stage
+is disconnected. Pause/resume, restart, scrub individual frames, or stop the
+preview to restore the acknowledged fixture view. Changing workspace also stops
+the simulation. Playback uses the file's capture rate and 16-bit channel values;
+omitted channels retain their previous values. OLAT previews a nominal sweep in
+arc/light order with selectable RGB or white emitters. Simulations run once and
+hold the final frame; they are not hardware telemetry or synchronized capture
+progress. The browser display refresh rate limits how many frames are visible.
+
 The **IBL** workspace converts a 2:1 equirectangular PNG, JPEG or WebP panorama
 (up to 16 MiB) into RGB fixture intensities. Import an image, adjust exposure in
 EV and horizontal rotation, and inspect the draft in either stage view. Importing

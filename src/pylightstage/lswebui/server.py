@@ -89,6 +89,7 @@ _STATIC_FILES = {
             "capture",
             "app",
             "sequences",
+            "simulation",
             "camera",
             "dom",
             "fixture-controls",
@@ -423,7 +424,7 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                     "/api/sequences": _sequence_command,
                     "/api/ibl": _apply_ibl,
                 }
-                if path == "/api/sequences/import":
+                if path in ("/api/sequences/import", "/api/sequences/preview"):
                     body = self._read_body(
                         _MAX_SEQUENCE_BYTES,
                         "Sequence file must be between 1 byte and 64 MiB",
@@ -431,7 +432,11 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                     filename = parse_qs(request_url.query).get("filename", [""])[0]
                     sequence = _decode_sequence(body, filename.lower())
                     response = {
-                        "result": asyncio.run(_upload_sequence(config, sequence))
+                        "result": (
+                            sequence.to_dict()
+                            if path == "/api/sequences/preview"
+                            else asyncio.run(_upload_sequence(config, sequence))
+                        )
                     }
                 elif path in (*commands, "/api/capture", "/api/fixture"):
                     payload = self._read_json_object()

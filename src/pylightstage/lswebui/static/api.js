@@ -62,3 +62,11 @@ export async function triggerCamera() {
 export function applyIBL(intensities) {
   return post("/api/ibl", "IBL application", { intensities });
 }
+
+export async function previewSequence(file) {
+  return (await request(`/api/sequences/preview?filename=${encodeURIComponent(file.name)}`, "Sequence preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+  })).result;
+}

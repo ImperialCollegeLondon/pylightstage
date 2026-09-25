@@ -2,6 +2,7 @@ import { loadConfiguration, readServer } from "./api.js";
 import { camera, installCameraControls, pickFixture } from "./camera.js";
 import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
+import { installSimulation } from "./simulation.js";
 import { installSequences } from "./sequences.js";
 import { installIBL } from "./ibl.js";
 import { installWorkspace } from "./workspace.js";
@@ -210,11 +211,15 @@ async function start() {
     installInspector();
     const loadSequences = installSequences(checkConnectivity);
     const ibl = installIBL(scene, checkConnectivity);
-    installWorkspace(loadSequences, checkConnectivity, ibl.setWorkspace);
+    const simulation = installSimulation(scene);
+    installWorkspace(loadSequences, checkConnectivity, (mode) => {
+      simulation.stop();
+      ibl.setWorkspace(mode);
+    });
     installCapture(checkConnectivity);
     installSceneControls(scene, renderers.grid, selectFixture);
     installModeControls(renderers);
-    startRendering(scene, renderers, ibl.renderScene);
+    startRendering(scene, renderers, () => simulation.renderScene(ibl.renderScene()));
   } catch (error) {
     const detail = errorMessage(error);
     setConnectivityStatus("error", "Unavailable", detail);

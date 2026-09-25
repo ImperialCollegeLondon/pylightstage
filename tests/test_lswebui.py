@@ -1297,3 +1297,27 @@ def test_ibl_http_endpoint(running_server, monkeypatch):
     assert status == 200
     assert json.loads(body) == {"result": None}
     assert received == [payload]
+
+
+@pytest.mark.parametrize("extension", ["json", "cbor", "cbor.zst"])
+def test_sequence_preview_never_uploads(running_server, monkeypatch, extension):
+    import zstandard as zstd
+
+    from pylightstage.models import PlaybackSequence, StageFrame
+
+    def forbidden(*args):
+        pytest.fail("Preview must not connect to hardware")
+
+    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", forbidden)
+    sequence = PlaybackSequence("Preview", 24.0, [StageFrame()])
+    payload = sequence.to_cbor()
+    if extension == "json":
+        payload = json.dumps(sequence.to_dict()).encode()
+    elif extension == "cbor.zst":
+        payload = zstd.ZstdCompressor().compress(payload)
+    status, _, body = request(
+        running_server, "POST",
+        f"/api/sequences/preview?filename=test.{extension}", body=payload,
+    )
+    assert status == 200
+    assert json.loads(body)["result"] == sequence.to_dict()
