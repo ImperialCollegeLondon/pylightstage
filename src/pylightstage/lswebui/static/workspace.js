@@ -1,7 +1,7 @@
 import { requestMode } from "./api.js";
 import { errorMessage, query, queryAll } from "./dom.js";
 
-export function installWorkspace(loadSequences, refreshMode) {
+export function installWorkspace(loadSequences, refreshMode, onWorkspaceChange = () => {}) {
   const tabs = queryAll("[role=tab][data-workspace]");
   function activate(tab) {
     const mode = tab.dataset.workspace;
@@ -14,6 +14,8 @@ export function installWorkspace(loadSequences, refreshMode) {
       query(`#${item.getAttribute("aria-controls")}`).hidden = !selected;
     }
     queryAll("[data-manual-controls]").forEach((element) => { element.hidden = mode !== "manual"; });
+    query("#ibl-inspector").hidden = mode !== "ibl";
+    onWorkspaceChange(mode);
     if (mode === "playback") loadSequences();
   }
   tabs.forEach((tab, index) => {

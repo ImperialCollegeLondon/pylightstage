@@ -84,6 +84,8 @@ _STATIC_FILES = {
         for name in (
             "api",
             "workspace",
+            "ibl",
+            "environment-map",
             "capture",
             "app",
             "sequences",
@@ -227,6 +229,27 @@ async def _apply_fixture_control(config: ServerConfig, payload: dict[str, Any]) 
                         go=False,
                     )
                 await client.go()
+
+
+async def _apply_ibl(config: ServerConfig, payload: dict[str, Any]) -> None:
+    """Validate the entire RGB pattern before changing mode or queuing fixtures."""
+    values = payload.get("intensities")
+    if not isinstance(values, list) or len(values) != _NUM_ARCS * _LIGHTS_PER_ARC:
+        raise ValueError("intensities must contain 168 RGB triplets")
+    intensities = []
+    for value in values:
+        if not isinstance(value, list) or any(
+            type(channel) not in (int, float) for channel in value
+        ):
+            raise ValueError("each intensity must be an array of three numbers")
+        intensities.append(validate_intensity(value))
+    async with LightStageClient(uri=config.lightstage_uri) as client:
+        await client.set_mode_manual()
+        for index, intensity in enumerate(intensities):
+            arc, light = divmod(index, _LIGHTS_PER_ARC)
+            await client.set_light(light, arc, "rgb", intensity, go=False)
+            await client.set_light(light, arc, "w", (0, 0, 0), go=False)
+        await client.go()
 
 
 def _control_response(payload: dict[str, Any]) -> dict[str, Any]:
@@ -398,6 +421,7 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                 commands = {
                     "/api/mode": _mode_command,
                     "/api/sequences": _sequence_command,
+                    "/api/ibl": _apply_ibl,
                 }
                 if path == "/api/sequences/import":
                     body = self._read_body(

@@ -59,6 +59,7 @@
         </div>
         <div class="segmented-control stage-tabs" role="tablist" aria-label="Stage control mode">
           <button id="manual-tab" class="segment active" type="button" role="tab" data-workspace="manual" aria-controls="manual-panel" aria-selected="true">Manual</button>
+          <button id="ibl-tab" class="segment" type="button" role="tab" data-workspace="ibl" aria-controls="ibl-panel" aria-selected="false" tabindex="-1">IBL</button>
           <button id="playback-tab" class="segment" type="button" role="tab" data-workspace="playback" aria-controls="playback-panel" aria-selected="false" tabindex="-1">Playback</button>
           <button id="olat-tab" class="segment" type="button" role="tab" data-workspace="olat" aria-controls="capture-panel" aria-selected="false" tabindex="-1">OLAT</button>
         </div>
@@ -69,6 +70,18 @@
         <p class="sequence-help">Select fixtures on the stage, then adjust their channels and intensity in the inspector.</p>
         <button id="start-manual" class="sequence-button primary-button" type="button">Enable manual control</button>
         <p id="manual-status" class="control-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="ibl-panel" class="tool-section" role="tabpanel" aria-labelledby="ibl-tab" tabindex="0" hidden>
+        <h3>Image-based lighting</h3>
+        <p class="sequence-help">Import a 2:1 equirectangular panorama to light the whole stage.</p>
+        <label class="select-label" for="ibl-file">Environment image</label>
+        <input id="ibl-file" type="file" accept="image/png,image/jpeg,image/webp">
+        <p class="sequence-help">PNG, JPEG or WebP · up to 16 MiB. HDR/EXR are not supported.</p>
+        <canvas id="ibl-thumbnail" width="256" height="128" aria-label="Imported panorama" hidden></canvas>
+        <p id="ibl-filename" class="sequence-help"></p>
+        <button id="ibl-remove" class="sequence-button" type="button" disabled>Remove image</button>
+        <p id="ibl-import-status" class="control-status" role="status" aria-live="polite"></p>
       </section>
 
       <section id="playback-panel" class="tool-section" role="tabpanel" aria-labelledby="playback-tab" tabindex="0" hidden>
@@ -175,6 +188,7 @@
         <div>
           <p class="eyebrow">Live geometry</p>
           <h2 id="viewport-title">LightStage overview</h2>
+          <span id="ibl-preview-label" class="live-pill" hidden>IBL preview</span>
         </div>
         <div class="viewport-actions">
           <div class="stage-stats" aria-label="Stage fixture counts">
@@ -234,6 +248,24 @@
         WebGPU is unavailable, so this session is using the Canvas 2D fallback.
       </p>
     </section>
+
+    <aside id="ibl-inspector" class="toolbar toolbar-right" aria-label="IBL adjustments" hidden>
+      <section class="tool-section">
+        <p class="eyebrow">IBL inspector</p>
+        <h2>Lighting adjustments</h2>
+        <form id="ibl-form">
+          <fieldset disabled>
+            <label class="select-label" for="ibl-exposure">Exposure <output id="ibl-exposure-value">0 EV</output></label>
+            <input id="ibl-exposure" type="range" min="-8" max="8" step="0.1" value="0">
+            <label class="select-label" for="ibl-rotation">Rotation <output id="ibl-rotation-value">0°</output></label>
+            <input id="ibl-rotation" type="range" min="-180" max="180" step="1" value="0">
+            <p class="sequence-help">RGB output · white emitters turn off on Apply. Preview uses the stage geometry, without photometric calibration.</p>
+            <button class="control-button primary-button" type="submit">Switch to manual and apply</button>
+          </fieldset>
+        </form>
+        <p id="ibl-status" class="control-status" role="status" aria-live="polite">Import an image to preview its lighting.</p>
+      </section>
+    </aside>
 
     <aside class="toolbar toolbar-right" data-manual-controls aria-label="Fixture information toolbar">
       <section class="tool-section">

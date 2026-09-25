@@ -177,6 +177,19 @@ rate in Hz and select **Start OLAT**, or select **Return to manual** to request
 Manual mode. Status messages acknowledge requests; capture progress and completion
 are not tracked.
 
+The **IBL** workspace converts a 2:1 equirectangular PNG, JPEG or WebP panorama
+(up to 16 MiB) into RGB fixture intensities. Import an image, adjust exposure in
+EV and horizontal rotation, and inspect the draft in either stage view. Importing
+and adjusting send no hardware commands. **Switch to manual and apply** enters
+Manual mode and applies all RGB values, turning off the white emitters, in one
+batch. Leaving IBL restores the locally acknowledged fixture view.
+
+Conversion averages sRGB pixels in linear light with solid-angle weighting over
+the stage's angular cells. The image centre faces arc 0; positive 90° rotation
+moves it to arc 3. This uses the visualizer's nominal geometry, without photometric
+calibration; the preview represents fixture output, not a rendered subject.
+HDR/EXR input is not supported.
+
 Routine settings are available from the command line:
 
 ```bash

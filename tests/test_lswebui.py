@@ -849,7 +849,7 @@ def test_every_browser_module_import_is_allow_listed(running_server):
         imports = re.findall(r'from\s+["\'](.+?)["\']', body.decode())
         pending.extend(urljoin(path, imported) for imported in imports)
 
-    assert len(visited) == 13
+    assert {"/assets/ibl.js", "/assets/environment-map.js"} <= visited
 
 
 def test_only_allow_listed_assets_are_exposed(running_server):
@@ -1239,3 +1239,61 @@ def test_invalid_upstream_json_returns_gateway_error(
         assert body == b""
     else:
         assert "not valid JSON" in json.loads(body)["error"]
+
+
+async def test_ibl_validates_before_connecting_and_batches_rgb_and_white(monkeypatch):
+    from pylightstage.lswebui.server import _apply_ibl
+
+    calls = []
+
+    class Client:
+        def __init__(self, **kwargs):
+            calls.append("connect")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def set_mode_manual(self):
+            calls.append("manual")
+
+        async def set_light(self, light, arc, color, intensity, go):
+            calls.append((light, arc, color, intensity, go))
+
+        async def go(self):
+            calls.append("go")
+
+    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    for invalid in (
+        None,
+        [],
+        [[0, 0, 0]] * 167,
+        [[0, 0, 0]] * 167 + [[True, 0, 0]],
+        [[0, 0, 0]] * 167 + [[256, 0, 0]],
+        [[0, 0, 0]] * 167 + [[float("nan"), 0, 0]],
+    ):
+        with pytest.raises((TypeError, ValueError)):
+            await _apply_ibl(ServerConfig(), {"intensities": invalid})
+    assert calls == []
+    await _apply_ibl(ServerConfig(), {"intensities": [[10, 20, 30]] * 168})
+    assert calls[:2] == ["connect", "manual"]
+    assert calls[2] == (0, 0, "rgb", (10, 20, 30), False)
+    assert calls[-2] == (13, 11, "w", (0, 0, 0), False)
+    assert calls[-1] == "go"
+    assert len(calls) == 339
+
+
+def test_ibl_http_endpoint(running_server, monkeypatch):
+    received = []
+
+    async def apply(config, payload):
+        received.append(payload)
+
+    monkeypatch.setattr("pylightstage.lswebui.server._apply_ibl", apply)
+    payload = {"intensities": [[12, 34, 56]] * 168}
+    status, _, body = request(running_server, "POST", "/api/ibl", json.dumps(payload))
+    assert status == 200
+    assert json.loads(body) == {"result": None}
+    assert received == [payload]

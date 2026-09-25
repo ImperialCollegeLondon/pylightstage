@@ -160,6 +160,97 @@ try {
     equal(document.querySelector("#sequence-status").dataset.state, "error");
     assert(!document.querySelector("#playback-panel").hasAttribute("aria-busy"));
   });
+  await test("environment sampling preserves energy, exposure and orientation", async () => {
+    const { sampleEnvironment } = await import("/assets/environment-map.js");
+    const pixels = new ImageData(120, 60);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      pixels.data.set([128, 0, 0, 255], i);
+    }
+    const values = sampleEnvironment(pixels, 12, 14);
+    assert(values.every(([r, g, b]) => Math.abs(r - 55.0444) < 0.01 && g === 0 && b === 0));
+    const brighter = sampleEnvironment(pixels, 12, 14, 0, 1);
+    assert(Math.abs(brighter[0][0] - 2 * values[0][0]) < 0.001);
+    pixels.data.fill(0);
+    for (let y = 0; y < 60; y++) for (let x = 55; x < 65; x++) {
+      pixels.data.set([255, 0, 0, 255], (y * 120 + x) * 4);
+    }
+    const first = sampleEnvironment(pixels, 12, 14);
+    const rotated = sampleEnvironment(pixels, 12, 14, 90);
+    assert(first[7][0] > 200);
+    assert(first[3 * 14 + 7][0] === 0);
+    assert(Math.abs(rotated[3 * 14 + 7][0] - first[7][0]) < 0.001);
+    const wrapped = sampleEnvironment(pixels, 12, 14, 360);
+    equal(wrapped, first);
+  });
+  await test("IBL imports locally, isolates preview, applies once and retains state on failure", async () => {
+    const { installIBL } = await import("/assets/ibl.js");
+    const scene = new StageScene();
+    const ibl = installIBL(scene, () => {});
+    ibl.setWorkspace("ibl");
+    const canvas = document.createElement("canvas");
+    canvas.width = 32; canvas.height = 16;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "red";
+    context.fillRect(0, 0, 32, 16);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve));
+    const input = document.querySelector("#ibl-file");
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], "test.png", { type: "image/png" }));
+    input.files = transfer.files;
+    let calls = 0;
+    window.fetch = () => { calls++; throw new Error("Unexpected request"); };
+    input.dispatchEvent(new Event("change"));
+    for (let i = 0; document.querySelector("#ibl-form fieldset").disabled && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(!document.querySelector("#ibl-form fieldset").disabled);
+    equal(calls, 0);
+    // A failed replacement preserves the previous valid preview.
+    const invalid = new DataTransfer();
+    invalid.items.add(new File(["not an image"], "broken.png", { type: "image/png" }));
+    input.files = invalid.files;
+    input.dispatchEvent(new Event("change"));
+    for (let i = 0; document.querySelector("#ibl-import-status").dataset.state !== "error" && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    equal(document.querySelector("#ibl-import-status").dataset.state, "error");
+    equal(document.querySelector("#ibl-filename").textContent, "test.png");
+    equal(scene.fixtures[0].intensity.rgb, [0, 0, 0]);
+    assert(ibl.renderScene().fixtures[0].intensity.rgb[0] > 254);
+    ibl.setWorkspace("manual");
+    assert(ibl.renderScene() === scene);
+    ibl.setWorkspace("ibl");
+    let finish;
+    window.fetch = (path, options) => {
+      calls++;
+      equal(path, "/api/ibl");
+      equal(JSON.parse(options.body).intensities.length, 168);
+      return new Promise((resolve) => { finish = resolve; });
+    };
+    const form = document.querySelector("#ibl-form");
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    equal(calls, 1);
+    equal(scene.fixtures[0].intensity.rgb, [0, 0, 0]);
+    finish(new Response('{"result":null}'));
+    for (let i = 0; input.disabled && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(scene.fixtures[0].intensity.rgb[0] > 254);
+    const exposure = document.querySelector("#ibl-exposure");
+    exposure.value = "-1";
+    exposure.dispatchEvent(new Event("input"));
+    assert(ibl.renderScene().fixtures[0].intensity.rgb[0] < 128);
+    window.fetch = async () => new Response('{"error":"offline"}', { status: 502 });
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    for (let i = 0; input.disabled && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(scene.fixtures[0].intensity.rgb[0] > 254);
+    equal(document.querySelector("#ibl-status").dataset.state, "error");
+    document.querySelector("#ibl-remove").click();
+    assert(ibl.renderScene() === scene);
+  });
   await test("application starts with the canvas fallback", async () => {
     // Use fresh DOM nodes to avoid carrying controller listeners between tests.
     document.body.replaceChildren(...new DOMParser().parseFromString(
@@ -176,6 +267,13 @@ try {
     equal(document.querySelector("#renderer-backend").textContent, "Canvas 2D");
     equal(document.querySelector("#service-status").dataset.state, "ready");
     assert(document.querySelector('[data-mode="3d"]').disabled);
+    document.querySelector("#ibl-tab").click();
+    equal(document.querySelector(".dashboard").dataset.workspace, "ibl");
+    assert(!document.querySelector("#ibl-panel").hidden);
+    assert(!document.querySelector("#ibl-inspector").hidden);
+    assert(document.querySelector("[data-manual-controls]").hidden);
+    document.querySelector("#manual-tab").click();
+    assert(document.querySelector("#ibl-inspector").hidden);
   });
 
 } catch (error) { failures.push(`Setup: ${error.stack}`); }

@@ -58,3 +58,7 @@ export async function sequenceRequest(payload, file = null) {
 export async function triggerCamera() {
   return (await post("/api/capture", "Camera capture", {})).result;
 }
+
+export function applyIBL(intensities) {
+  return post("/api/ibl", "IBL application", { intensities });
+}

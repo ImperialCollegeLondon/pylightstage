@@ -462,15 +462,15 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
   #sequence-list li { flex-wrap: wrap; }
 }
 
-.stage-tabs { grid-template-columns: repeat(3, 1fr); }
+.stage-tabs { grid-template-columns: repeat(2, 1fr); }
 .stage-tabs .segment { cursor: pointer; }
 .stage-tabs .segment:focus-visible { outline: 2px solid #70c9b6; outline-offset: 2px; }
-.dashboard:not([data-workspace="manual"]) { grid-template-columns: 15.5rem minmax(28rem, 1fr); }
+.dashboard:not([data-workspace="manual"]):not([data-workspace="ibl"]) { grid-template-columns: 15.5rem minmax(28rem, 1fr); }
 #manual-panel > button { margin-top: 1rem; }
 #playback-panel #sequence-list li { align-items: flex-start; flex-direction: column; gap: 0.5rem; }
 .dashboard:not([data-workspace="manual"]) .interaction-hint { display: none; }
 @media (max-width: 1100px) {
-  .dashboard:not([data-workspace="manual"]) { grid-template-columns: 1fr; }
+  .dashboard:not([data-workspace="manual"]):not([data-workspace="ibl"]) { grid-template-columns: 1fr; }
 }
 
 /* Keep each desktop workspace within the window, independent of its content. */
@@ -494,3 +494,11 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 #camera-interval-form { display: grid; grid-template-columns: 1fr 5rem; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
 #camera-interval-form label { margin: 0; }
 #camera-interval-form .control-actions { grid-column: 1 / -1; margin-top: 0; }
+
+#ibl-file { width: 100%; font-size: 0.7rem; margin: 0.6rem 0; }
+#ibl-thumbnail { width: 100%; height: auto; margin-top: 0.8rem; border-radius: 0.4rem; }
+#ibl-filename { overflow-wrap: anywhere; }
+#ibl-form fieldset { border: 0; padding: 0; margin: 1rem 0 0; min-width: 0; }
+#ibl-form input, #ibl-form button { width: 100%; }
+#ibl-form button { margin-top: 1rem; }
+#ibl-form output { color: var(--teal); }

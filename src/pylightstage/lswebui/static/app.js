@@ -3,6 +3,7 @@ import { camera, installCameraControls, pickFixture } from "./camera.js";
 import { errorMessage, query, queryAll, setPressed } from "./dom.js";
 import { installFixtureControls } from "./fixture-controls.js";
 import { installSequences } from "./sequences.js";
+import { installIBL } from "./ibl.js";
 import { installWorkspace } from "./workspace.js";
 import { installCapture, installCameraCapture } from "./capture.js";
 import { Canvas2DRenderer } from "./renderers/canvas2d.js";
@@ -139,7 +140,7 @@ function installSceneControls(scene, gridRenderer, selectFixture) {
   });
 }
 
-function startRendering(scene, renderers) {
+function startRendering(appliedScene, renderers, renderScene = () => appliedScene) {
   const labels = new StageLabels(query("#stage-labels"));
   const showLabels = query("#show-labels");
   function useFallback(error) {
@@ -169,6 +170,7 @@ function startRendering(scene, renderers) {
     }
   }
   const frame = () => {
+    const scene = renderScene();
     const activeCanvas = activeMode === "3d" ? canvas : gridCanvas;
     if (pointer?.view !== activeCanvas) pointer = null;
     scene.hoverFixture(pointer
@@ -207,11 +209,12 @@ async function start() {
     );
     installInspector();
     const loadSequences = installSequences(checkConnectivity);
-    installWorkspace(loadSequences, checkConnectivity);
+    const ibl = installIBL(scene, checkConnectivity);
+    installWorkspace(loadSequences, checkConnectivity, ibl.setWorkspace);
     installCapture(checkConnectivity);
     installSceneControls(scene, renderers.grid, selectFixture);
     installModeControls(renderers);
-    startRendering(scene, renderers);
+    startRendering(scene, renderers, ibl.renderScene);
   } catch (error) {
     const detail = errorMessage(error);
     setConnectivityStatus("error", "Unavailable", detail);
