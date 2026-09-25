@@ -488,4 +488,9 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 .session-details summary { cursor: pointer; color: #aebec3; }
 .session-details .connection-card { position: absolute; top: 1.6rem; right: 0; width: min(20rem, calc(100vw - 2rem)); margin: 0; box-shadow: 0 0.8rem 2rem #0008; }
 .camera-control { margin-top: auto; }
-#camera-trigger { width: 100%; margin-top: 0.8rem; }
+.camera-control .section-heading { gap: 0.5rem; }
+.camera-control .control-status:empty { margin-top: 0; }
+
+#camera-interval-form { display: grid; grid-template-columns: 1fr 5rem; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+#camera-interval-form label { margin: 0; }
+#camera-interval-form .control-actions { grid-column: 1 / -1; margin-top: 0; }

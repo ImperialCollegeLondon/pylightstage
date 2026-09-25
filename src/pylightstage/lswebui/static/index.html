@@ -154,18 +154,19 @@
       </section>
 
       <section class="tool-section camera-control" aria-labelledby="camera-control-title">
-        <h3 id="camera-control-title">Camera control</h3>
-        <p class="sequence-help">Capture in Manual mode. Automatic capture runs while this page is open.</p>
-        <button id="camera-trigger" class="sequence-button primary-button" type="button">Capture now</button>
+        <div class="section-heading">
+          <h3 id="camera-control-title">Camera control</h3>
+          <button id="camera-trigger" class="sequence-button primary-button" type="button" title="Trigger a capture in Manual mode">Capture now</button>
+        </div>
         <form id="camera-interval-form">
-          <label for="camera-interval">Interval between captures (seconds)</label>
+          <label for="camera-interval">Interval (seconds)</label>
           <input id="camera-interval" type="number" min="0.1" max="86400" step="any" value="5" required>
           <div class="control-actions">
-            <button id="camera-start" class="sequence-button" type="submit">Start automatic</button>
+            <button id="camera-start" title="Capture automatically while this page is open" class="sequence-button" type="submit">Start automatic</button>
             <button id="camera-stop" class="sequence-button" type="button" disabled>Stop</button>
           </div>
         </form>
-        <p id="camera-status" class="control-status" role="status" aria-live="polite">Ready to capture in Manual mode.</p>
+        <p id="camera-status" class="control-status" role="status" aria-live="polite"></p>
       </section>
     </aside>
 
