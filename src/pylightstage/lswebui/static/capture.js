@@ -56,6 +56,7 @@ export function installCameraCapture() {
   let running = false;
   let busy = false;
   let timer;
+  let generation = 0;
 
   function updateControls() {
     trigger.disabled = busy || running;
@@ -66,6 +67,7 @@ export function installCameraCapture() {
 
   function stopCaptures(message = "Automatic capture stopped.") {
     running = false;
+    generation += 1;
     window.clearTimeout(timer);
     status.textContent = message;
     status.dataset.state = "";
@@ -75,11 +77,13 @@ export function installCameraCapture() {
   async function capture() {
     if (busy) return;
     busy = true;
+    const startedGeneration = generation;
     updateControls();
     status.textContent = "Capturing…";
     status.dataset.state = "working";
     try {
       await triggerCamera();
+      if (startedGeneration !== generation) return;
       status.textContent = running
         ? `Capture triggered. Next capture in ${interval.valueAsNumber} seconds.`
         : "Capture triggered.";

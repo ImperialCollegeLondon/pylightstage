@@ -140,7 +140,23 @@ function installSceneControls(scene, gridRenderer, selectFixture) {
 }
 
 function startRendering(scene, renderers) {
-  const labels = new StageLabels(canvas, query("#stage-labels"));
+  const labels = new StageLabels(query("#stage-labels"));
+  const showLabels = query("#show-labels");
+  function useFallback(error) {
+    console.warn("WebGPU renderer stopped; using the 2D grid", error);
+    renderers.webgpu?.destroy();
+    renderers.webgpu = null;
+
+    const button = modeButtons.find((item) => item.dataset.mode === "3d");
+    button.disabled = true;
+    button.title = "WebGPU is unavailable";
+    fallbackNote.hidden = false;
+    fallbackNote.textContent = "The 3D renderer stopped. The 2D grid remains available.";
+    setMode("2d", renderers);
+  }
+  renderers.webgpu?.device.lost.then((info) => {
+    if (renderers.webgpu) useFallback(info.message);
+  });
   let pointer = null;
   for (const view of [canvas, gridCanvas]) {
     view.addEventListener("pointermove", (event) => {
@@ -162,8 +178,12 @@ function startRendering(scene, renderers) {
       : null);
 
     if (activeMode === "3d") {
-      const matrix = renderers.webgpu.render(scene, camera);
-      labels.render(scene, matrix, query("#show-labels").checked);
+      try {
+        const matrix = renderers.webgpu.render(scene, camera);
+        labels.render(scene, matrix, showLabels.checked);
+      } catch (error) {
+        useFallback(error);
+      }
     }
     else renderers.grid.render(scene);
     requestAnimationFrame(frame);

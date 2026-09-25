@@ -1,75 +1,60 @@
-async function parseJson(response, invalidResponse) {
-  const body = await response.text();
+/** Shared HTTP boundary. Commands are never retried: they may already have run. */
+async function request(path, operation, options = {}) {
+  const response = await fetch(path, { cache: "no-store", ...options });
+  let payload;
   try {
-    return JSON.parse(body);
+    payload = await response.json();
   } catch {
-    throw new Error(invalidResponse(response));
+    throw new Error(`${operation} returned an invalid response (${response.status}).`);
   }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`${operation} returned an invalid response (${response.status}).`);
+  }
+  if (!response.ok) {
+    throw new Error(typeof payload.error === "string"
+      ? payload.error : `${operation} failed (${response.status}).`);
+  }
+  return payload;
 }
 
-export async function loadConfiguration() {
-  const response = await fetch("/api/config", { cache: "no-store" });
-  if (!response.ok) throw new Error(`Configuration request failed (${response.status})`);
-  return response.json();
+function post(path, operation, payload) {
+  return request(path, operation, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loadConfiguration() {
+  return request("/api/config", "Configuration request");
 }
 
 export async function readServer(action) {
-  const response = await fetch(`/api/inspect?action=${encodeURIComponent(action)}`, {
-    cache: "no-store",
-  });
-  const payload = await parseJson(
-    response,
-    ({ status }) => `Server inspection returned an invalid response (${status}).`,
+  const payload = await request(
+    `/api/inspect?action=${encodeURIComponent(action)}`, "Server inspection",
   );
-  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
   return payload.result;
 }
 
-export async function controlFixture(payload) {
-  const response = await fetch("/api/fixture", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const result = await parseJson(response, ({ headers, status }) => {
-    const contentType = headers.get("Content-Type") || "unknown content type";
-    return `Fixture control returned ${contentType} instead of JSON (${status}). Restart lswebui and reload this page.`;
-  });
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-  return result;
+export function controlFixture(payload) {
+  return post("/api/fixture", "Fixture control", payload);
 }
 
 export async function requestMode(payload) {
-  const response = await fetch("/api/mode", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const result = await parseJson(response, ({ status }) => `Mode request returned an invalid response (${status}).`);
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-  return result.result;
+  return (await post("/api/mode", "Mode request", payload)).result;
 }
 
 export async function sequenceRequest(payload, file = null) {
-  const response = await fetch(file
-    ? `/api/sequences/import?filename=${encodeURIComponent(file.name)}`
-    : "/api/sequences", {
-    method: "POST",
-    headers: { "Content-Type": file ? "application/octet-stream" : "application/json" },
-    body: file || JSON.stringify(payload),
-  });
-  const result = await parseJson(response, ({ status }) => `Sequence request returned an invalid response (${status}).`);
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+  const result = file
+    ? await request(`/api/sequences/import?filename=${encodeURIComponent(file.name)}`, "Sequence import", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file,
+    })
+    : await post("/api/sequences", "Sequence request", payload);
   return result.result;
 }
 
 export async function triggerCamera() {
-  const response = await fetch("/api/capture", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  const result = await parseJson(response, ({ status }) => `Camera capture returned an invalid response (${status}).`);
-  if (!response.ok) throw new Error(result.error || `Capture failed (${response.status})`);
-  return result.result;
+  return (await post("/api/capture", "Camera capture", {})).result;
 }

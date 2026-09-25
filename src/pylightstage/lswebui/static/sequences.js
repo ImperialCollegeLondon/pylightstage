@@ -32,8 +32,9 @@ export function installSequences(refreshMode) {
 
   async function refresh() {
     const sequences = await readServer("list-sequences");
-    list.replaceChildren();
-    for (const sequence of sequences || []) {
+    if (!Array.isArray(sequences)) throw new Error("Server returned an invalid sequence list.");
+    const rows = document.createDocumentFragment();
+    for (const sequence of sequences) {
       const row = document.createElement("li");
       const info = document.createElement("div");
       const name = document.createElement("strong");
@@ -49,6 +50,7 @@ export function installSequences(refreshMode) {
       for (const action of ["play", "delete"]) {
         const button = document.createElement("button");
         button.type = "button";
+        button.disabled = busy;
         button.className = `sequence-button ${action === "play" ? "primary-button" : "danger-button"}`;
         button.textContent = action === "play" ? "Play" : "Delete";
         button.setAttribute("aria-label", `${button.textContent} ${sequence.name}`);
@@ -66,17 +68,18 @@ export function installSequences(refreshMode) {
         actions.append(button);
       }
       row.append(info, actions);
-      list.append(row);
+      rows.append(row);
     }
-    if (!list.children.length) {
+    if (!rows.children.length) {
       const empty = document.createElement("li");
       empty.textContent = "No sequences yet. Import a file to get started.";
-      list.append(empty);
+      rows.append(empty);
     }
+    list.replaceChildren(rows);
   }
 
   function load() {
-    run(async () => {
+    return run(async () => {
       message("Loading sequences…", "working");
       await refresh();
       message("Library refreshed.");

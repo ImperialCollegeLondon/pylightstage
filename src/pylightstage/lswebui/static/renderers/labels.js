@@ -1,4 +1,3 @@
-import { pickFixture } from "../camera.js";
 import { resizeCanvas } from "../math.js";
 
 /** Project with the exact WebGPU matrix, retaining depth for front-to-back layout. */
@@ -19,17 +18,9 @@ function overlaps(a, b) {
 
 /** Screen-space labels stay upright and a fixed CSS size at every orbit angle. */
 export class StageLabels {
-  constructor(stageCanvas, canvas) {
-    this.stageCanvas = stageCanvas;
+  constructor(canvas) {
     this.canvas = canvas;
     this.context = canvas.getContext("2d");
-    this.pointer = null;
-    stageCanvas.addEventListener("pointermove", (event) => {
-      this.pointer = event.buttons ? null : [event.clientX, event.clientY];
-    });
-    for (const event of ["pointerleave", "pointerdown", "pointercancel"]) {
-      stageCanvas.addEventListener(event, () => { this.pointer = null; });
-    }
   }
 
   render(scene, matrix, enabled) {
@@ -38,7 +29,7 @@ export class StageLabels {
     const { width, height } = this.canvas.getBoundingClientRect();
     if (!width || !height) return;
     const signature = JSON.stringify([
-      ...matrix, scene.version, this.pointer, enabled, width, height,
+      ...matrix, scene.version, enabled, width, height,
       this.canvas.width, this.canvas.height,
     ]);
     if (signature === this.signature) return;
@@ -48,8 +39,7 @@ export class StageLabels {
     context.clearRect(0, 0, width, height);
     if (!enabled || (!scene.visibility.rgb && !scene.visibility.white)) return;
 
-    const hovered = this.pointer
-      ? pickFixture(this.stageCanvas, scene, ...this.pointer) : null;
+    const hovered = scene.hoveredLogicalIndex;
     const arcs = Array.from({ length: scene.arcs }, () => []);
     const fixtureBounds = [];
     for (let index = 0; index < scene.logicalCount; index += 1) {

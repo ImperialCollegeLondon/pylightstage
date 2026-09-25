@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import json
-import math
 import socket
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, is_dataclass
@@ -16,17 +14,19 @@ from importlib.resources import files
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-import zstandard as zstd
-
 from ..client import LightStageClient
 from ..lscli import DEFAULT_URI
 from ..models import ColorMode, PlaybackSequence, PolarizationMode
 from ..utils import color_mode, polarization_mode, validate_index, validate_intensity
+from .sequence_files import MAX_SEQUENCE_BYTES
+from .sequence_files import decode_sequence as _decode_sequence
+from .validation import capture_rate
 
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 8000
 _MAX_REQUEST_BYTES = 32_768
-_MAX_SEQUENCE_BYTES = 64 * 1024 * 1024
+_MAX_SEQUENCE_BYTES = MAX_SEQUENCE_BYTES
+_REQUEST_TIMEOUT_SECONDS = 30
 _JSON_TYPE = "application/json; charset=utf-8"
 _CSP = (
     "default-src 'self'; connect-src 'self' ws: wss:; "
@@ -62,43 +62,41 @@ class ServerConfig:
     log_requests: bool = False
 
     def validate(self) -> None:
-        if not self.bind:
+        if not isinstance(self.bind, str) or not self.bind.strip():
             raise ValueError("bind address must not be empty")
-        if not 0 <= self.port <= 65535:
+        if type(self.port) is not int or not 0 <= self.port <= 65535:
             raise ValueError("port must be between 0 and 65535")
-        if not self.lightstage_uri.startswith(("ws://", "wss://")):
-            raise ValueError("LightStage URI must use ws:// or wss://")
+        uri = urlsplit(self.lightstage_uri)
+        if uri.scheme not in ("ws", "wss") or not uri.hostname:
+            raise ValueError("LightStage URI must use ws:// or wss:// with a host")
+        if uri.fragment:
+            raise ValueError("LightStage URI must not contain a fragment")
+        _ = uri.port  # Validate malformed and out-of-range ports before binding.
 
 
-_STATIC_FILES: dict[str, tuple[str, str]] = {
+# An explicit allowlist prevents arbitrary package files from being served.
+_STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/assets/styles.css": ("styles.css", "text/css; charset=utf-8"),
-    "/assets/api.js": ("api.js", "text/javascript; charset=utf-8"),
-    "/assets/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"),
-    "/assets/capture.js": ("capture.js", "text/javascript; charset=utf-8"),
-    "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
-    "/assets/sequences.js": ("sequences.js", "text/javascript; charset=utf-8"),
-    "/assets/camera.js": ("camera.js", "text/javascript; charset=utf-8"),
-    "/assets/dom.js": ("dom.js", "text/javascript; charset=utf-8"),
-    "/assets/fixture-controls.js": (
-        "fixture-controls.js",
-        "text/javascript; charset=utf-8",
-    ),
-    "/assets/math.js": ("math.js", "text/javascript; charset=utf-8"),
-    "/assets/scene.js": ("scene.js", "text/javascript; charset=utf-8"),
-    "/assets/renderers/canvas2d.js": (
-        "renderers/canvas2d.js",
-        "text/javascript; charset=utf-8",
-    ),
-    "/assets/renderers/labels.js": (
-        "renderers/labels.js",
-        "text/javascript; charset=utf-8",
-    ),
-    "/assets/renderers/webgpu.js": (
-        "renderers/webgpu.js",
-        "text/javascript; charset=utf-8",
-    ),
+    **{
+        f"/assets/{name}.js": (f"{name}.js", "text/javascript; charset=utf-8")
+        for name in (
+            "api",
+            "workspace",
+            "capture",
+            "app",
+            "sequences",
+            "camera",
+            "dom",
+            "fixture-controls",
+            "math",
+            "scene",
+            "renderers/canvas2d",
+            "renderers/labels",
+            "renderers/webgpu",
+        )
+    },
 }
 
 
@@ -131,7 +129,7 @@ def _control_targets(
     payload: dict[str, Any],
 ) -> list[tuple[str, int | None, int | None]]:
     raw_targets = payload.get("targets")
-    if raw_targets is None:
+    if "targets" not in payload:
         return [_control_target(payload)]
     if not isinstance(raw_targets, list) or not raw_targets:
         raise TypeError("targets must be a non-empty array")
@@ -153,9 +151,14 @@ async def _apply_fixture_control(config: ServerConfig, payload: dict[str, Any]) 
     if action not in ("set", "clear"):
         raise ValueError("action must be 'set' or 'clear'")
     targets = _control_targets(payload)
-    intensity = validate_intensity(
+    raw_intensity = (
         [0, 0, 0] if action == "clear" else payload.get("intensity", [255, 255, 255])
     )
+    if not isinstance(raw_intensity, list) or any(
+        type(value) not in (int, float) for value in raw_intensity
+    ):
+        raise ValueError("intensity must be an array of three numbers")
+    intensity = validate_intensity(raw_intensity)
 
     selector = payload.get("selector", "direct")
     color: ColorMode | None = None
@@ -263,52 +266,6 @@ async def _inspect_server(config: ServerConfig, action: str) -> Any:
         return await getattr(client, method_name)()
 
 
-def _decode_sequence(payload: bytes, filename: str) -> PlaybackSequence:
-    """Decode an uploaded file without writing it to the local filesystem."""
-    try:
-        if filename.endswith(".zst"):
-            with zstd.ZstdDecompressor().stream_reader(io.BytesIO(payload)) as reader:
-                payload = reader.read(_MAX_SEQUENCE_BYTES + 1)
-            if len(payload) > _MAX_SEQUENCE_BYTES:
-                raise ValueError("Expanded sequence exceeds 64 MiB")
-        sequence = (
-            PlaybackSequence.from_dict(json.loads(payload))
-            if filename.endswith(".json")
-            else PlaybackSequence.from_cbor(payload)
-        )
-        if not isinstance(sequence.name, str) or not sequence.name.strip():
-            raise ValueError("Sequence name must not be empty")
-        if (
-            isinstance(sequence.capture_hz, bool)
-            or not math.isfinite(sequence.capture_hz)
-            or sequence.capture_hz <= 0
-        ):
-            raise ValueError("capture_hz must be a positive finite number")
-        if not sequence.frames:
-            raise ValueError("Sequence must contain at least one frame")
-        for frame in sequence.frames:
-            for grid in (frame.white_fixtures, frame.rgb_fixtures):
-                if not grid:
-                    continue
-                if len(grid) != _NUM_ARCS or any(
-                    len(row) != _LIGHTS_PER_ARC for row in grid
-                ):
-                    raise ValueError(
-                        "Fixture grids must have 12 arcs and 14 lights per arc"
-                    )
-                for row in grid:
-                    for value in row:
-                        if len(value) != 3 or any(
-                            type(v) is not int or not 0 <= v <= 65535 for v in value
-                        ):
-                            raise ValueError(
-                                "Fixture values must be three integers from 0 to 65535"
-                            )
-        return sequence
-    except Exception as exc:
-        raise ValueError(f"Invalid sequence file: {exc}") from exc
-
-
 async def _trigger_camera(config: ServerConfig) -> Any:
     async with LightStageClient(uri=config.lightstage_uri) as client:
         return await client.trigger()
@@ -318,14 +275,11 @@ async def _mode_command(config: ServerConfig, payload: dict[str, Any]) -> Any:
     mode = payload.get("mode")
     if mode not in ("olat", "manual"):
         raise ValueError("mode must be olat or manual")
-    rate = payload.get("capture_hz")
-    if mode == "olat":
-        if type(rate) not in (int, float) or not math.isfinite(rate) or rate <= 0:
-            raise ValueError("capture_hz must be a positive finite number")
-    elif "capture_hz" in payload:
+    if mode == "manual" and "capture_hz" in payload:
         raise ValueError("capture_hz is only valid for olat mode")
+    rate = capture_rate(payload.get("capture_hz")) if mode == "olat" else None
     async with LightStageClient(uri=config.lightstage_uri) as client:
-        if mode == "olat":
+        if rate is not None:
             return await client.set_mode_olat(rate)
         return await client.set_mode_manual()
 
@@ -334,22 +288,27 @@ async def _sequence_command(config: ServerConfig, payload: dict[str, Any]) -> An
     action = payload.get("action")
     if action not in ("play", "delete", "manual"):
         raise ValueError("action must be play, delete, or manual")
-    sequence_id = payload.get("id")
+    sequence_id = payload.get("id", "")
     if action != "manual" and (
         not isinstance(sequence_id, str) or not sequence_id.strip()
     ):
         raise ValueError("Sequence id is required")
     async with LightStageClient(uri=config.lightstage_uri) as client:
+        if action == "manual":
+            return await client.set_mode_manual()
+        assert isinstance(sequence_id, str)  # Validated before opening the client.
         if action == "play":
             return await client.set_mode_playback(sequence_id)
-        if action == "delete":
-            return await client.delete_sequence(sequence_id)
-        return await client.set_mode_manual()
+        return await client.delete_sequence(sequence_id)
 
 
 async def _upload_sequence(config: ServerConfig, sequence: PlaybackSequence) -> Any:
     async with LightStageClient(uri=config.lightstage_uri) as client:
         return await client.upload_sequence(sequence)
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"Non-finite JSON number: {value}")
 
 
 def _json_default(value: object) -> object:
@@ -366,6 +325,7 @@ def _json_bytes(value: object) -> bytes:
         default=_json_default,
         separators=(",", ":"),
         sort_keys=True,
+        allow_nan=False,
     ).encode()
 
 
@@ -384,7 +344,7 @@ def _stage_error(
 ) -> tuple[HTTPStatus, str]:
     """Map client, validation, and protocol failures to the public HTTP API."""
 
-    if isinstance(exc, (ValueError, IndexError, TypeError)):
+    if isinstance(exc, (ValueError, IndexError, TypeError, OverflowError)):
         return HTTPStatus.BAD_REQUEST, str(exc)
     if isinstance(exc, TimeoutError):
         return (
@@ -430,59 +390,83 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
             self._handle(head_only=True)
 
         def do_POST(self) -> None:
-            path = unquote(urlsplit(self.path).path)
-            if path not in (
-                "/api/fixture",
-                "/api/mode",
-                "/api/capture",
-                "/api/sequences",
-                "/api/sequences/import",
-            ):
-                self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed")
-                return
+            # POST errors may leave a body unread. Never reuse such a connection.
+            self.close_connection = True
             try:
+                request_url = urlsplit(self.path)
+                path = unquote(request_url.path)
+                commands = {
+                    "/api/mode": _mode_command,
+                    "/api/sequences": _sequence_command,
+                }
                 if path == "/api/sequences/import":
-                    size = int(self.headers.get("Content-Length", ""))
-                    if not 0 < size <= _MAX_SEQUENCE_BYTES:
-                        raise ValueError(
-                            "Sequence file must be between 1 byte and 64 MiB"
+                    body = self._read_body(
+                        _MAX_SEQUENCE_BYTES,
+                        "Sequence file must be between 1 byte and 64 MiB",
+                    )
+                    filename = parse_qs(request_url.query).get("filename", [""])[0]
+                    sequence = _decode_sequence(body, filename.lower())
+                    response = {
+                        "result": asyncio.run(_upload_sequence(config, sequence))
+                    }
+                elif path in (*commands, "/api/capture", "/api/fixture"):
+                    payload = self._read_json_object()
+                    if path == "/api/fixture":
+                        asyncio.run(_apply_fixture_control(config, payload))
+                        response = _control_response(payload)
+                    else:
+                        command = (
+                            _trigger_camera(config)
+                            if path == "/api/capture"
+                            else commands[path](config, payload)
                         )
-                    filename = parse_qs(urlsplit(self.path).query).get(
-                        "filename", [""]
-                    )[0]
-                    sequence = _decode_sequence(self.rfile.read(size), filename.lower())
-                    result = asyncio.run(_upload_sequence(config, sequence))
-                    self._send_json({"result": result}, head_only=False)
+                        response = {"result": asyncio.run(command)}
+                else:
+                    self._send_error(
+                        HTTPStatus.METHOD_NOT_ALLOWED, "Method not allowed"
+                    )
                     return
-                payload = self._read_json_object()
-                if path == "/api/capture":
-                    result = asyncio.run(_trigger_camera(config))
-                    self._send_json({"result": result}, head_only=False)
-                    return
-                if path == "/api/mode":
-                    result = asyncio.run(_mode_command(config, payload))
-                    self._send_json({"result": result}, head_only=False)
-                    return
-                if path == "/api/sequences":
-                    result = asyncio.run(_sequence_command(config, payload))
-                    self._send_json({"result": result}, head_only=False)
-                    return
-                asyncio.run(_apply_fixture_control(config, payload))
-            except Exception as exc:  # noqa: BLE001
+                self._send_json(response, head_only=False)
+            except Exception as exc:  # noqa: BLE001 - HTTP error boundary
                 self._send_stage_error(exc, "command")
-                return
-            self._send_json(_control_response(payload), head_only=False)
+
+        def _read_body(self, limit: int, message: str) -> bytes:
+            if self.headers.get("Transfer-Encoding") is not None:
+                raise ValueError("Transfer-Encoding is not supported")
+            lengths = self.headers.get_all("Content-Length", [])
+            if (
+                len(lengths) != 1
+                or not lengths[0].isascii()
+                or not lengths[0].isdigit()
+            ):
+                raise ValueError("A single integer Content-Length is required")
+            length = int(lengths[0])
+            if not 0 < length <= limit:
+                raise ValueError(message)
+            self.connection.settimeout(_REQUEST_TIMEOUT_SECONDS)
+            try:
+                body = self.rfile.read(length)
+            except TimeoutError as exc:
+                raise ValueError("Timed out reading request body") from exc
+            if len(body) != length:
+                raise ValueError("Incomplete request body")
+            return body
 
         def _read_json_object(self) -> dict[str, Any]:
-            content_length = int(self.headers.get("Content-Length", ""))
-            if not 0 < content_length <= _MAX_REQUEST_BYTES:
-                raise ValueError("request body must contain JSON")
-            payload = json.loads(self.rfile.read(content_length))
+            body = self._read_body(_MAX_REQUEST_BYTES, "request body must contain JSON")
+            payload = json.loads(body, parse_constant=_reject_json_constant)
             if not isinstance(payload, dict):
                 raise TypeError("request body must be a JSON object")
             return payload
 
         def _handle(self, *, head_only: bool) -> None:
+            try:
+                self._handle_get(head_only=head_only)
+            except Exception as exc:  # noqa: BLE001 - HTTP error boundary
+                self.close_connection = True
+                self._send_stage_error(exc, "query", head_only=head_only)
+
+        def _handle_get(self, *, head_only: bool) -> None:
             request_url = urlsplit(self.path)
             path = unquote(request_url.path)
             if path == "/api/health":
@@ -495,11 +479,7 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/api/inspect":
                 action = parse_qs(request_url.query).get("action", [""])[0]
-                try:
-                    result = asyncio.run(_inspect_server(config, action))
-                except Exception as exc:  # noqa: BLE001
-                    self._send_stage_error(exc, "query", head_only=head_only)
-                    return
+                result = asyncio.run(_inspect_server(config, action))
                 self._send_json(
                     {"action": action, "result": result}, head_only=head_only
                 )
@@ -522,9 +502,15 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
             self._send(HTTPStatus.OK, body, content_type, head_only=head_only)
 
         def _send_json(self, value: object, *, head_only: bool) -> None:
+            try:
+                body = _json_bytes(value)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "LightStage returned data that is not valid JSON"
+                ) from exc
             self._send(
                 HTTPStatus.OK,
-                _json_bytes(value),
+                body,
                 _JSON_TYPE,
                 head_only=head_only,
                 cache_control="no-store",
@@ -568,6 +554,8 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", cache_control)
+            if self.close_connection:
+                self.send_header("Connection", "close")
             for name, value in _SECURITY_HEADERS.items():
                 self.send_header(name, value)
             self.end_headers()

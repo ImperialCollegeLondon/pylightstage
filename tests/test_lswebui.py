@@ -1081,3 +1081,161 @@ def test_camera_capture_endpoint_errors(
     status, _, body = request(running_server, "POST", "/api/capture", body="{}")
     assert status == expected_status
     assert str(error) in json.loads(body)["error"]
+
+
+@pytest.mark.parametrize("port", [True, 1.5, "8000"])
+def test_server_config_rejects_non_integer_ports(port):
+    with pytest.raises(ValueError, match="port"):
+        ServerConfig(port=port).validate()
+
+
+@pytest.mark.parametrize(
+    "uri",
+    ["ws://", "ws:///path", "ws://host:bad", "ws://host:65536", "ws://host/#fragment"],
+)
+def test_server_config_rejects_malformed_websocket_uris(uri):
+    with pytest.raises(ValueError):
+        ServerConfig(lightstage_uri=uri).validate()
+
+
+@pytest.mark.parametrize(
+    "intensity", ["123", [True, 0, 0], ["1", 2, 3], {"1": 1, "2": 2, "3": 3}]
+)
+async def test_fixture_rejects_coercible_non_numeric_intensity(intensity, monkeypatch):
+    def unexpected_connection(**_):
+        pytest.fail("Invalid payload must not connect to hardware")
+
+    monkeypatch.setattr(
+        "pylightstage.lswebui.server.LightStageClient", unexpected_connection
+    )
+    with pytest.raises(ValueError, match="intensity"):
+        await _apply_fixture_control(
+            ServerConfig(),
+            {
+                "action": "set",
+                "arc": 0,
+                "light": 0,
+                "intensity": intensity,
+            },
+        )
+
+
+def test_json_rejects_non_finite_constants(running_server):
+    status, headers, body = request(
+        running_server, "POST", "/api/mode", body='{"mode":"olat","capture_hz":NaN}'
+    )
+    assert status == 400
+    assert "Non-finite JSON" in json.loads(body)["error"]
+    assert headers["Connection"] == "close"
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Content-Length": "-1"},
+        {"Content-Length": "32769"},
+        {"Transfer-Encoding": "chunked"},
+    ],
+)
+def test_invalid_body_framing_closes_connection(running_server, headers):
+    status, response_headers, _ = request(
+        running_server, "POST", "/api/capture", body="{}", headers=headers
+    )
+    assert status == 400
+    assert response_headers["Connection"] == "close"
+
+
+def test_unknown_post_route_closes_unread_body(running_server):
+    status, headers, _ = request(running_server, "POST", "/unknown", body="ignored")
+    assert status == 405
+    assert headers["Connection"] == "close"
+
+
+@pytest.mark.parametrize("value", [None, False, {}, "", [None], [[0]]])
+def test_sequence_rejects_malformed_grids_before_normalization(value):
+    from pylightstage.lswebui.sequence_files import decode_sequence
+
+    data = {"name": "test", "capture_hz": 30, "frames": [{"rgb_fixtures": value}]}
+    with pytest.raises(ValueError, match="Invalid sequence file"):
+        decode_sequence(json.dumps(data).encode(), "test.json")
+
+
+@pytest.mark.parametrize("rate", [True, "30", None, float("inf"), 0, -1])
+def test_sequence_rejects_invalid_capture_rates(rate):
+    from pylightstage.lswebui.sequence_files import decode_sequence
+
+    data = {"name": "test", "capture_hz": rate, "frames": [{}]}
+    with pytest.raises(ValueError, match="capture_hz"):
+        decode_sequence(json.dumps(data).encode(), "test.json")
+
+
+def test_sequence_reads_compressed_json_and_rejects_trailing_cbor():
+    import zstandard
+
+    from pylightstage.lswebui.sequence_files import decode_sequence
+    from pylightstage.models import PlaybackSequence, StageFrame
+
+    sequence = PlaybackSequence("test", 30, [StageFrame()])
+    compressed = zstandard.ZstdCompressor().compress(
+        json.dumps(sequence.to_dict()).encode()
+    )
+    assert decode_sequence(compressed, "TEST.JSON.ZST") == sequence
+    with pytest.raises(ValueError, match="Unexpected data"):
+        decode_sequence(sequence.to_cbor() + b"extra", "test.cbor")
+
+
+def test_sequence_expansion_is_bounded(monkeypatch):
+    import zstandard
+
+    from pylightstage.lswebui import sequence_files
+
+    monkeypatch.setattr(sequence_files, "MAX_SEQUENCE_BYTES", 128)
+    payload = zstandard.ZstdCompressor().compress(b" " * 129)
+    with pytest.raises(ValueError, match="Expanded sequence exceeds"):
+        sequence_files.decode_sequence(payload, "test.zst")
+
+
+def test_duplicate_content_length_is_rejected(running_server):
+    connection = http.client.HTTPConnection(
+        *running_server.server_address[:2], timeout=2
+    )
+    try:
+        connection.putrequest("POST", "/api/capture")
+        connection.putheader("Content-Length", "2")
+        connection.putheader("Content-Length", "2")
+        connection.endheaders(b"{}")
+        response = connection.getresponse()
+        assert response.status == 400
+        assert response.getheader("Connection") == "close"
+        assert "single integer Content-Length" in json.loads(response.read())["error"]
+    finally:
+        connection.close()
+
+
+def test_slow_body_reports_request_error(running_server, monkeypatch):
+    monkeypatch.setattr("pylightstage.lswebui.server._REQUEST_TIMEOUT_SECONDS", 0.01)
+    status, _, body = request(
+        running_server,
+        "POST",
+        "/api/capture",
+        body="{}",
+        headers={"Content-Length": "10"},
+    )
+    assert status == 400
+    assert json.loads(body)["error"] == "Timed out reading request body"
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_invalid_upstream_json_returns_gateway_error(
+    running_server, monkeypatch, method
+):
+    async def inspect(*_):
+        return float("nan")
+
+    monkeypatch.setattr("pylightstage.lswebui.server._inspect_server", inspect)
+    status, _, body = request(running_server, method, "/api/inspect?action=get-mode")
+    assert status == 502
+    if method == "HEAD":
+        assert body == b""
+    else:
+        assert "not valid JSON" in json.loads(body)["error"]

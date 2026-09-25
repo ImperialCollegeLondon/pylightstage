@@ -24,6 +24,7 @@ export function installFixtureControls(scene, available) {
   const selectionSummary = query("#selection-summary");
   const selectionChips = query("#selection-chips");
   let selectedTargets = [];
+  let busy = false;
 
   function targetKey(target) {
     if (target.target === "fixture") return `fixture:${target.arc}:${target.light}`;
@@ -58,9 +59,9 @@ export function installFixtureControls(scene, available) {
     return [scene.fixtures[target.arc * scene.lightsPerArc + target.light]];
   }
 
-  function selectedFixtures() {
+  function selectedFixtures(targets = selectedTargets) {
     const indices = new Set();
-    selectedTargets.forEach((target) => {
+    targets.forEach((target) => {
       targetFixtures(target).forEach((fixture) => {
         indices.add(fixture.arc * scene.lightsPerArc + fixture.light);
       });
@@ -152,10 +153,10 @@ export function installFixtureControls(scene, available) {
     scene.selectFixtures(logicalIndices, primaryLogicalIndex);
 
     const hasSelection = logicalIndices.length > 0;
-    fieldset.disabled = !available || !hasSelection;
+    fieldset.disabled = busy || !available || !hasSelection;
     selectionEmpty.hidden = hasSelection;
     selectionSummary.hidden = !hasSelection;
-    resetStatus(hasSelection);
+    if (!busy) resetStatus(hasSelection);
 
     if (!hasSelection) {
       query("#selection-title").textContent = "No fixture selected";
@@ -187,9 +188,9 @@ export function installFixtureControls(scene, available) {
   }
 
   function updateLocalSelection(request, intensity) {
-    selectedFixtures().forEach((fixture) => {
+    selectedFixtures(request.targets).forEach((fixture) => {
       const channel = request.selector === "direct"
-        ? request.color
+        ? (request.color === "w" ? "white" : request.color)
         : polarizedChannel(fixture.arc, fixture.light, request.polarization);
       if (channel === "rgb" || channel === "rgbw") {
         scene.setFixtureIntensity(fixture.arc, fixture.light, "rgb", intensity);
@@ -201,7 +202,8 @@ export function installFixtureControls(scene, available) {
   }
 
   async function send(action) {
-    if (selectedTargets.length === 0) return;
+    if (busy || !available || selectedTargets.length === 0) return;
+    if (action === "set" && !form.reportValidity()) return;
     const intensity = action === "clear" ? [0, 0, 0] : readIntensity();
     const request = {
       action,
@@ -211,8 +213,9 @@ export function installFixtureControls(scene, available) {
       color: colour.value,
       polarization: polarization.value,
     };
-    const buttons = queryAll("button", form);
-    buttons.forEach((button) => { button.disabled = true; });
+    busy = true;
+    fieldset.disabled = true;
+    form.setAttribute("aria-busy", "true");
     const name = selectedTargets.length === 1
       ? targetName(selectedTargets[0])
       : `${selectedTargets.length} selected targets`;
@@ -221,14 +224,16 @@ export function installFixtureControls(scene, available) {
     try {
       await controlFixture(request);
       updateLocalSelection(request, intensity);
-      if (action === "clear") setIntensity(intensity);
+      updateDescription();
       status.textContent = `${name} ${action === "clear" ? "turned off" : "updated"}.`;
       status.dataset.state = "success";
     } catch (error) {
       status.textContent = errorMessage(error);
       status.dataset.state = "error";
     } finally {
-      buttons.forEach((button) => { button.disabled = false; });
+      busy = false;
+      fieldset.disabled = !available || selectedTargets.length === 0;
+      form.removeAttribute("aria-busy");
     }
   }
 
@@ -268,6 +273,7 @@ export function installFixtureControls(scene, available) {
   return function selectFixture(logicalIndex, modifiers = {}) {
     if (query(".dashboard").dataset.workspace !== "manual") return;
     const fixture = scene.fixtures[logicalIndex];
+    if (!fixture) return;
     const target = targetFromFixture(fixture);
     const key = targetKey(target);
     const existingIndex = selectedTargets.findIndex(

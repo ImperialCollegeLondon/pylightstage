@@ -12,6 +12,9 @@ function rgbIsVertical(arc, light) {
 
 export function polarizedChannel(arc, light, polarization) {
   if (polarization === "up") return "rgbw";
+  if (polarization !== "pp" && polarization !== "cp") {
+    throw new RangeError(`Unknown polarization: ${polarization}`);
+  }
   const vertical = rgbIsVertical(arc, light);
   if (polarization === "pp") return vertical ? "rgb" : "white";
   return vertical ? "white" : "rgb";
@@ -20,6 +23,10 @@ export function polarizedChannel(arc, light, polarization) {
 /** Renderer-neutral state for the paired physical fixtures in a 12-by-14 LightStage. */
 export class StageScene {
   constructor(arcs = 12, lightsPerArc = 14) {
+    if (!Number.isInteger(arcs) || arcs < 1
+        || !Number.isInteger(lightsPerArc) || lightsPerArc < 2) {
+      throw new RangeError("Stage layout requires positive arcs and at least two lights per arc");
+    }
     this.arcs = arcs;
     this.lightsPerArc = lightsPerArc;
     this.logicalCount = arcs * lightsPerArc;
@@ -112,7 +119,14 @@ export class StageScene {
     return this.hoveredLogicalIndex === logicalIndex ? 1.5 : normalAlpha;
   }
 
+  #validateIndex(logicalIndex) {
+    if (!Number.isInteger(logicalIndex) || logicalIndex < 0 || logicalIndex >= this.logicalCount) {
+      throw new RangeError(`Logical fixture ${logicalIndex} is outside the stage layout`);
+    }
+  }
+
   hoverFixture(logicalIndex) {
+    if (logicalIndex !== null) this.#validateIndex(logicalIndex);
     if (logicalIndex === this.hoveredLogicalIndex) return;
     const previous = this.hoveredLogicalIndex;
     this.hoveredLogicalIndex = logicalIndex;
@@ -126,7 +140,8 @@ export class StageScene {
   }
 
   setLayerVisibility(channel, visible) {
-    if (!(channel in this.visibility)) throw new RangeError(`Unknown fixture layer: ${channel}`);
+    if (!Object.hasOwn(this.visibility, channel)) throw new RangeError(`Unknown fixture layer: ${channel}`);
+    if (this.visibility[channel] === Boolean(visible)) return;
     this.visibility[channel] = Boolean(visible);
     for (let logicalIndex = 0; logicalIndex < this.logicalCount; logicalIndex += 1) {
       this.#setAlpha(logicalIndex, channel, visible ? this.#highlightAlpha(logicalIndex) : 0);
@@ -135,11 +150,16 @@ export class StageScene {
   }
 
   setFixture(arc, light, channel, colour, bumpVersion = true) {
-    if (arc < 0 || arc >= this.arcs || light < 0 || light >= this.lightsPerArc) {
+    if (!Number.isInteger(arc) || !Number.isInteger(light)
+        || arc < 0 || arc >= this.arcs || light < 0 || light >= this.lightsPerArc) {
       throw new RangeError(`Fixture ${arc}:${light} is outside the stage layout`);
     }
     if (channel !== "rgb" && channel !== "white") {
       throw new RangeError(`Unknown physical fixture channel: ${channel}`);
+    }
+    if (!Array.isArray(colour) || colour.length < 3 || colour.length > 4
+        || !colour.every(Number.isFinite)) {
+      throw new RangeError("Fixture colour must contain three or four finite numbers");
     }
     const logicalIndex = arc * this.lightsPerArc + light;
     const channelOffset = channel === "white" ? 1 : 0;
@@ -159,11 +179,7 @@ export class StageScene {
   selectFixtures(logicalIndices, primaryLogicalIndex = null) {
     const selection = new Set(logicalIndices);
     for (const logicalIndex of selection) {
-      if (!Number.isInteger(logicalIndex)
-          || logicalIndex < 0
-          || logicalIndex >= this.logicalCount) {
-        throw new RangeError(`Logical fixture ${logicalIndex} is outside the stage layout`);
-      }
+      this.#validateIndex(logicalIndex);
     }
     if (primaryLogicalIndex !== null && !selection.has(primaryLogicalIndex)) {
       throw new RangeError("Primary fixture must be part of the selection");
@@ -182,10 +198,11 @@ export class StageScene {
   }
 
   selectFixture(logicalIndex) {
-    this.selectFixtures([logicalIndex], logicalIndex);
+    this.selectFixtures(logicalIndex === null ? [] : [logicalIndex], logicalIndex);
   }
 
   getLogicalCentre(logicalIndex) {
+    this.#validateIndex(logicalIndex);
     const rgbOffset = logicalIndex * PHYSICAL_PER_FIXTURE * INSTANCE_STRIDE;
     const whiteOffset = rgbOffset + INSTANCE_STRIDE;
     return [0, 1, 2].map(
@@ -194,9 +211,12 @@ export class StageScene {
   }
 
   setFixtureIntensity(arc, light, channel, intensity) {
-    const values = intensity.map((value) => Math.max(0, Math.min(255, Number(value))));
+    if (!Array.isArray(intensity) || intensity.length !== 3
+        || !intensity.every((value) => Number.isFinite(value) && value >= 0 && value <= 255)) {
+      throw new RangeError("Intensity must contain three finite numbers between 0 and 255");
+    }
+    const values = [...intensity];
     const logicalIndex = arc * this.lightsPerArc + light;
-    this.fixtures[logicalIndex].intensity[channel] = [...values];
     let colour;
     if (channel === "rgb") {
       colour = RGB_OFF.map((base, index) => base + (values[index] / 255) * 0.9);
@@ -209,5 +229,6 @@ export class StageScene {
       ].map((value) => Math.min(1, value));
     }
     this.setFixture(arc, light, channel, colour);
+    this.fixtures[logicalIndex].intensity[channel] = values;
   }
 }

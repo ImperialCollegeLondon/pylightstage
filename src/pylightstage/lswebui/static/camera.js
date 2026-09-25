@@ -24,6 +24,7 @@ function clearViewSelection(buttons) {
 
 export function pickFixture(canvas, scene, clientX, clientY) {
   const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height || (!scene.visibility.rgb && !scene.visibility.white)) return null;
   const ndcX = ((clientX - bounds.left) / bounds.width) * 2 - 1;
   const ndcY = 1 - ((clientY - bounds.top) / bounds.height) * 2;
   const horizontalDistance = Math.cos(camera.pitch) * camera.distance;
@@ -98,7 +99,9 @@ export function installCameraControls(canvas, scene, buttons, onSelect) {
     }
   };
   canvas.addEventListener("pointerup", endDrag);
-  canvas.addEventListener("pointercancel", endDrag);
+  for (const eventName of ["pointercancel", "lostpointercapture"]) {
+    canvas.addEventListener(eventName, () => { drag = null; });
+  }
 
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();

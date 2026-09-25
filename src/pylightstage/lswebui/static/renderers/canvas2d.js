@@ -48,10 +48,10 @@ export class Canvas2DRenderer {
     const rowCount = scene.lightsPerArc;
     const gridWidth = (columnCount + 0.5) * SQRT_3;
     const gridHeight = 1.5 * (rowCount - 1) + 2;
-    const stepRadius = Math.min(
+    const stepRadius = Math.max(0, Math.min(
       (width - padding * 2) / gridWidth,
       (height - padding * 2) / gridHeight,
-    );
+    ));
     const drawnRadius = stepRadius;
     const occupiedWidth = gridWidth * stepRadius;
     const occupiedHeight = gridHeight * stepRadius;
@@ -126,6 +126,7 @@ export class Canvas2DRenderer {
 
   pick(clientX, clientY) {
     const bounds = this.canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return null;
     const x = (clientX - bounds.left) * this.canvas.width / bounds.width;
     const y = (clientY - bounds.top) * this.canvas.height / bounds.height;
     for (const cell of this.cells) {
@@ -139,7 +140,14 @@ export class Canvas2DRenderer {
   }
 
   render(scene) {
-    if (this.resize() || this.cells.length !== scene.logicalCount) this.layout(scene);
+    const resized = this.resize();
+    const layoutKey = `${scene.arcs}:${scene.lightsPerArc}`;
+    const layoutChanged = this.layoutKey !== layoutKey;
+    if (resized || layoutChanged) this.layout(scene);
+    if (!resized && !layoutChanged && this.scene === scene && this.version === scene.version) return;
+    this.layoutKey = layoutKey;
+    this.scene = scene;
+    this.version = scene.version;
     const context = this.context;
     const { width, height } = this.canvas;
     const background = context.createRadialGradient(

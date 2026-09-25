@@ -82,8 +82,13 @@ export class WebGPURenderer {
     if (!adapter) throw new Error("No compatible WebGPU adapter was found");
     const device = await adapter.requestDevice();
     const context = canvas.getContext("webgpu");
-    if (!context) throw new Error("Could not create a WebGPU canvas context");
-    return new WebGPURenderer(canvas, device, context);
+    try {
+      if (!context) throw new Error("Could not create a WebGPU canvas context");
+      return new WebGPURenderer(canvas, device, context);
+    } catch (error) {
+      device.destroy();
+      throw error;
+    }
   }
 
   constructor(canvas, device, context) {
@@ -103,11 +108,7 @@ export class WebGPURenderer {
     });
     device.queue.writeBuffer(this.vertexBuffer, 0, vertices);
 
-    this.instanceBuffer = device.createBuffer({
-      label: "paired fixture instances",
-      size: 336 * 16 * Float32Array.BYTES_PER_ELEMENT,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
+    this.instanceBuffer = null;
     this.cameraBuffer = device.createBuffer({
       label: "orbit camera",
       size: 80,
@@ -151,6 +152,15 @@ export class WebGPURenderer {
     context.configure({ device, format: this.format, alphaMode: "opaque" });
   }
 
+  destroy() {
+    this.depthTexture?.destroy();
+    this.instanceBuffer?.destroy();
+    this.vertexBuffer.destroy();
+    this.cameraBuffer.destroy();
+    this.context.unconfigure();
+    this.device.destroy();
+  }
+
   resize() {
     const sizeChanged = resizeCanvas(this.canvas);
     if (!sizeChanged && this.depthTexture) return;
@@ -165,9 +175,19 @@ export class WebGPURenderer {
   render(scene, camera) {
     this.resize();
     if (!this.depthTexture) return;
-    if (this.uploadedVersion !== scene.version) {
+    if (!this.instanceBuffer || this.instanceBuffer.size !== scene.instanceData.byteLength) {
+      this.instanceBuffer?.destroy();
+      this.instanceBuffer = this.device.createBuffer({
+        label: "paired fixture instances",
+        size: scene.instanceData.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+      });
+      this.uploadedVersion = -1;
+    }
+    if (this.uploadedScene !== scene || this.uploadedVersion !== scene.version) {
       this.device.queue.writeBuffer(this.instanceBuffer, 0, scene.instanceData);
       this.uploadedVersion = scene.version;
+      this.uploadedScene = scene;
     }
     const horizontalDistance = Math.cos(camera.pitch) * camera.distance;
     const eye = [
