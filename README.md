@@ -89,43 +89,67 @@ The web UI opens at `http://127.0.0.1:8000/`. Stop it with Ctrl-C.
 
 ```mermaid
 flowchart LR
-    Async["Async Python application"] --> Client["LightStageClient"]
-    CLI["Blocking application / lscli"] --> Sync["LightStageSyncClient"]
-    Sync --> Client
-    Browser["Browser"] <-->|"HTTP / JSON / files"| Web["lswebui"]
-    Web --> Client
-    Builder["SequenceBuilder"] --> Sequence["PlaybackSequence"]
-    Sequence --> Client
-    Sequence <-->|"CBOR / Zstandard"| Disk["Local files"]
-    Client <-->|"CBOR over WebSocket"| Server["LightStage server"]
-    Server --> Hardware["Fixtures and capture hardware"]
+    subgraph Computer["User computer"]
+        Async["Async Python application"] --> Client["LightStageClient"]
+        CLI["Blocking application / lscli"] --> Sync["LightStageSyncClient"]
+        Sync --> Client
+        Browser["Browser"] <-->|"Local HTTP / JSON / files"| Web["lswebui backend"]
+        Web --> Client
+        Builder["SequenceBuilder"] --> Sequence["PlaybackSequence"]
+        Sequence --> Client
+        Sequence <-->|"CBOR / Zstandard"| Disk["Local files"]
+    end
+    subgraph Controller["Stage controller computer"]
+        Server["LightStage server"]
+    end
+    Client <-->|"Network: CBOR over WebSocket"| Server
+    Server --> Hardware["Physical fixtures and capture hardware"]
 ```
 
-All hardware operations use `LightStageClient`. The server handles playback timing
-and capture; the browser connects through the local HTTP backend.
+The boxes group software by device. `LightStageClient` runs on the user computer;
+the LightStage server runs on the stage controller computer and controls the
+hardware. The browser talks to the local `lswebui` backend, which uses the Python
+client to reach the server. The server handles playback timing and capture.
 
 ### Requests, responses, and events
 
+The participants below are software units, grouped by the computer they run on.
+The **receiver** is a background task inside `LightStageClient`, not another
+device or server. It continuously reads the same WebSocket used to send requests.
+
 ```mermaid
 sequenceDiagram
-    participant Caller as Python / CLI / web backend
-    participant Client as LightStageClient
-    participant Server as LightStage server
-    participant Receiver as Client receiver task
-    Caller->>Client: Call a client method
-    Client->>Client: Validate input and allocate request ID and Future
-    Client->>Server: Binary CBOR request (id, command)
-    Server-->>Receiver: Response (id, response)
-    Receiver->>Client: Resolve matching pending Future
-    Client-->>Caller: Return result or raise error
-    Server-->>Receiver: Event notification
-    Receiver-->>Caller: Registered event callback
+    box User computer
+        participant App as Calling code (Python / CLI / web backend)
+        participant Client as LightStageClient method
+        participant Receiver as Receiver (inside LightStageClient)
+    end
+    box Stage controller computer
+        participant Server as LightStage server
+    end
+    App->>Client: Call get_mode()
+    Client->>Server: WebSocket request with unique ID
+    Server-->>Receiver: WebSocket response with the same ID
+    Receiver->>Client: Complete the waiting request for that ID
+    Client-->>App: Return mode or raise an error
+    Note over App,Server: Events arrive independently of method calls
+    Server-->>Receiver: WebSocket event notification
+    Receiver->>App: Dispatch event to registered callbacks
 ```
 
-One receiver task matches responses by request ID and dispatches events. Connection
-and request timeouts default to five seconds; uploads allow 60 seconds. Disconnects
-fail pending requests, and server errors become Python exceptions. Use context
-managers or `connect()` / `close()` to manage connections.
+**Requests and responses:** a method such as `await client.get_mode()` assigns a
+unique request ID, sends the command, and waits for its result. The receiver uses
+the response ID to complete the matching wait. Internally, that wait is an
+`asyncio.Future`: a placeholder for the result. IDs keep replies matched correctly
+when several requests share a connection.
+
+**Events:** the server can also send notifications that are not replies to a
+request. The receiver dispatches these to callbacks registered with `on_event`;
+they do not complete a waiting method call.
+
+Connection and request timeouts default to five seconds; uploads allow 60 seconds.
+Disconnects fail pending requests, and server errors become Python exceptions.
+Use context managers or `connect()` / `close()` to manage connections.
 
 Fixture updates with `go=False` are queued until `go()` sends a merged
 `SetFixtures` request. Failed batches are retained for an explicit retry, with
