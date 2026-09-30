@@ -38,9 +38,10 @@ def test_browser_regressions(tmp_path):
                     self.send_error(404)
                     return
                 body = path.read_bytes()
-                content_type = (
-                    "text/html" if path.suffix == ".html" else "text/javascript"
-                )
+                content_type = {
+                    ".html": "text/html",
+                    ".css": "text/css",
+                }.get(path.suffix, "text/javascript")
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
@@ -92,5 +93,5 @@ def test_browser_regressions(tmp_path):
             log.seek(0)
             assert finished, f"Browser did not report results:\n{log.read()}"
     assert results
-    assert results[0]["failures"] == []
+    assert results[0]["failures"] == [], "\n".join(results[0]["failures"])
     assert results[0]["passed"] >= 10

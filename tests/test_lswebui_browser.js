@@ -305,6 +305,65 @@ try {
     document.querySelector("#ibl-remove").click();
     assert(ibl.renderScene() === scene);
   });
+  await test("Workspace controls fit desktop windows with readable view presets and active previews", async () => {
+    const frame = document.createElement("iframe");
+    frame.srcdoc = (await (await originalFetch("/index.html")).text())
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
+    const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+    document.body.append(frame);
+    await loaded;
+    try {
+      const doc = frame.contentDocument;
+      for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        for (const mode of ["manual", "ibl", "playback", "olat"]) {
+          doc.querySelector(".dashboard").dataset.workspace = mode;
+          for (const tab of doc.querySelectorAll("[role=tab]")) {
+            doc.getElementById(tab.getAttribute("aria-controls")).hidden = tab.dataset.workspace !== mode;
+          }
+          doc.querySelectorAll("[data-manual-controls]").forEach((el) => { el.hidden = mode !== "manual"; });
+          const sequenceWorkspace = mode === "playback" || mode === "olat";
+          doc.querySelector("#sequence-inspector").hidden = !sequenceWorkspace;
+          doc.querySelector("#ibl-inspector").hidden = mode !== "ibl";
+          const simulationPanel = doc.querySelector("#simulation-panel");
+          if (sequenceWorkspace) doc.querySelector("#sequence-inspector").append(simulationPanel);
+          else if (mode === "ibl") doc.querySelector("#ibl-inspector").append(simulationPanel);
+          else doc.querySelector(".toolbar-left").insertBefore(simulationPanel, doc.querySelector(".camera-control"));
+          doc.querySelectorAll("[data-workspace-controls]").forEach((el) => {
+            el.hidden = el.dataset.workspaceControls !== mode;
+          });
+          doc.querySelector("#simulation-controls").hidden = false;
+          doc.querySelector("#simulation-status").textContent = "Preview running · frame 1 of 168";
+          doc.querySelector("#sequence-status").textContent = "Sequence imported successfully.";
+          doc.querySelector("#capture-status").textContent = "OLAT requested.";
+          doc.querySelector("#sequence-list").innerHTML = '<li><div>Example sequence<small>168 frames · 30 Hz</small></div><div class="sequence-actions"><button class="sequence-button">Play</button><button class="sequence-button danger-button">Delete</button></div></li>';
+          await new Promise((resolve) => frame.contentWindow.requestAnimationFrame(resolve));
+          assert(doc.documentElement.scrollHeight <= height + 1, `${mode}: page overflows at ${width}×${height}`);
+          for (const toolbar of doc.querySelectorAll(".toolbar:not([hidden])")) {
+            assert(toolbar.scrollHeight <= toolbar.clientHeight + 1, `${mode}: ${toolbar.className} ${toolbar.scrollHeight}/${toolbar.clientHeight} overflows at ${width}×${height}`);
+          }
+          for (const button of doc.querySelectorAll(".scene-controls-dock button")) {
+            assert(button.scrollWidth <= button.clientWidth + 1, `${button.textContent.trim()}: text exceeds button width`);
+            assert(frame.contentWindow.getComputedStyle(button).minHeight !== "0px", "View controls need a usable height");
+          }
+          const viewControls = doc.querySelector("#camera-controls").getBoundingClientRect();
+          const presets = doc.querySelector(".view-grid").getBoundingClientRect();
+          const reset = doc.querySelector("#reset-view").getBoundingClientRect();
+          assert(Math.abs(presets.width - reset.width) < 1, "Preset row and reset fill the same width");
+          assert(reset.top >= presets.bottom, "Reset occupies a separate row below presets");
+          assert(Math.abs(reset.bottom - viewControls.bottom) < 1, "View controls fill their section vertically");
+          assert(doc.querySelector(".canvas-shell").clientHeight >= 250, "Stage view remains usable");
+          const previewInputs = sequenceWorkspace ? [mode === "olat" ? "simulate-olat" : "simulation-file"] : [];
+          for (const id of ["camera-trigger", "camera-start", "camera-stop", "simulation-stop", ...previewInputs]) {
+            const bounds = doc.getElementById(id).getBoundingClientRect();
+            assert(bounds.bottom <= height && bounds.top >= 0, `${id} outside window`);
+          }
+        }
+      }
+    } finally { frame.remove(); }
+  });
   await test("application starts with the canvas fallback", async () => {
     // Use fresh DOM nodes to avoid carrying controller listeners between tests.
     document.body.replaceChildren(...new DOMParser().parseFromString(
@@ -326,8 +385,16 @@ try {
     assert(!document.querySelector("#ibl-panel").hidden);
     assert(!document.querySelector("#ibl-inspector").hidden);
     assert(document.querySelector("[data-manual-controls]").hidden);
+    for (const mode of ["playback", "olat"]) {
+      document.querySelector(`#${mode}-tab`).click();
+      assert(!document.querySelector("#sequence-inspector").hidden);
+      assert(!document.querySelector(`[data-workspace-controls="${mode}"]`).hidden);
+      assert(document.querySelector("#simulation-panel").parentElement.id === "sequence-inspector");
+    }
     document.querySelector("#manual-tab").click();
     assert(document.querySelector("#ibl-inspector").hidden);
+    assert(document.querySelector("#sequence-inspector").hidden);
+    assert(document.querySelector("#simulation-panel").parentElement.classList.contains("toolbar-left"));
   });
 
 } catch (error) { failures.push(`Setup: ${error.stack}`); }

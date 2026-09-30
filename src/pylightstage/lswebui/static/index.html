@@ -97,10 +97,6 @@
         </div>
         <p class="sequence-help">CBOR, CBOR.zst or JSON · up to 64 MiB (including expanded data)</p>
         <p id="sequence-status" class="control-status" role="status" aria-live="polite"></p>
-        <label for="simulation-file">Simulate a local playback file</label>
-        <input id="simulation-file" type="file" accept=".cbor,.zst,.json">
-        <p class="sequence-help">Preview on the model without uploading to the stage.</p>
-        <ul id="sequence-list" aria-label="Uploaded sequences"></ul>
       </section>
 
       <section id="capture-panel" class="tool-section" role="tabpanel" aria-labelledby="olat-tab" tabindex="0" hidden>
@@ -114,14 +110,10 @@
             <button class="control-button primary-button" type="submit">Start OLAT</button>
           </div>
         </form>
-        <label for="simulation-channel">OLAT simulation emitters</label>
-        <select id="simulation-channel"><option value="rgb">RGB</option><option value="white">White</option></select>
-        <button id="simulate-olat" class="control-button" type="button">Simulate OLAT</button>
-        <p class="sequence-help">Local sweep in arc / light order at the capture rate above.</p>
         <p id="capture-status" class="control-status" role="status" aria-live="polite"></p>
       </section>
 
-      <section class="tool-section" aria-label="Lighting simulation">
+      <section id="simulation-panel" class="tool-section" aria-label="Lighting simulation">
         <p id="simulation-status" class="control-status" role="status"></p>
         <div id="simulation-controls" hidden>
           <label for="simulation-frame">Simulation frame</label>
@@ -131,58 +123,6 @@
           <button id="simulation-stop" class="control-button" type="button">Stop preview</button>
         </div>
       </section>
-      <section class="tool-section" data-scene-controls>
-        <div class="section-heading compact">
-          <h3>View</h3>
-          <span id="view-kind" class="section-count">3D</span>
-        </div>
-        <div id="camera-controls">
-          <div class="view-grid">
-            <button class="tool-button active" type="button" data-view="perspective" aria-pressed="true">
-              <span class="view-icon perspective-icon" aria-hidden="true"></span>
-              Perspective
-            </button>
-            <button class="tool-button" type="button" data-view="front" aria-pressed="false">
-              <span class="view-icon front-icon" aria-hidden="true"></span>
-              Front
-            </button>
-            <button class="tool-button" type="button" data-view="top" aria-pressed="false">
-              <span class="view-icon top-icon" aria-hidden="true"></span>
-              Top
-            </button>
-          </div>
-          <button class="wide-button" id="reset-view" type="button">
-            <span aria-hidden="true">↺</span>
-            Reset camera
-            <kbd>R</kbd>
-          </button>
-        </div>
-      </section>
-
-      <section class="tool-section grow" data-scene-controls>
-        <div class="section-heading compact">
-          <h3>Layers</h3>
-          <span class="section-count">3</span>
-        </div>
-        <label class="layer-row">
-          <input id="show-rgb" type="checkbox" checked>
-          <span class="layer-swatch rgb-swatch" aria-hidden="true"></span>
-          <span><strong>RGB fixtures</strong><small>Colour emitters</small></span>
-          <b>168</b>
-        </label>
-        <label class="layer-row">
-          <input id="show-white" type="checkbox" checked>
-          <span class="layer-swatch white-swatch" aria-hidden="true"></span>
-          <span><strong>W fixtures</strong><small>White emitters</small></span>
-          <b>168</b>
-        </label>
-        <label class="layer-row">
-          <input id="show-labels" type="checkbox" checked>
-          <span class="layer-swatch" aria-hidden="true">#</span>
-          <span><strong>3D labels</strong><small>Arcs · hover for fixture #</small></span>
-        </label>
-      </section>
-
       <section class="tool-section camera-control" aria-labelledby="camera-control-title">
         <div class="section-heading">
           <h3 id="camera-control-title">Camera control</h3>
@@ -262,10 +202,83 @@
         <p id="interaction-hint-2d" class="interaction-hint" hidden><span aria-hidden="true">⬡</span> Click a hexagon to
           paint a selection</p>
       </div>
+      <div class="scene-controls-dock" aria-label="View and layers">
+      <section class="tool-section" data-scene-controls>
+        <div class="section-heading compact">
+          <h3>View</h3>
+          <span id="view-kind" class="section-count">3D</span>
+        </div>
+        <div id="camera-controls">
+          <div class="view-grid">
+            <button class="tool-button active" type="button" data-view="perspective" aria-pressed="true">
+              <span class="view-icon perspective-icon" aria-hidden="true"></span>
+              Perspective
+            </button>
+            <button class="tool-button" type="button" data-view="front" aria-pressed="false">
+              <span class="view-icon front-icon" aria-hidden="true"></span>
+              Front
+            </button>
+            <button class="tool-button" type="button" data-view="top" aria-pressed="false">
+              <span class="view-icon top-icon" aria-hidden="true"></span>
+              Top
+            </button>
+          </div>
+          <button class="wide-button" id="reset-view" type="button">
+            <span aria-hidden="true">↺</span>
+            Reset camera
+            <kbd>R</kbd>
+          </button>
+        </div>
+      </section>
+
+      <section class="tool-section" data-scene-controls>
+        <div class="section-heading compact">
+          <h3>Layers</h3>
+          <span class="section-count">3</span>
+        </div>
+        <label class="layer-row">
+          <input id="show-rgb" type="checkbox" checked>
+          <span class="layer-swatch rgb-swatch" aria-hidden="true"></span>
+          <span><strong>RGB fixtures</strong><small>Colour emitters</small></span>
+          <b>168</b>
+        </label>
+        <label class="layer-row">
+          <input id="show-white" type="checkbox" checked>
+          <span class="layer-swatch white-swatch" aria-hidden="true"></span>
+          <span><strong>W fixtures</strong><small>White emitters</small></span>
+          <b>168</b>
+        </label>
+        <label class="layer-row">
+          <input id="show-labels" type="checkbox" checked>
+          <span class="layer-swatch" aria-hidden="true">#</span>
+          <span><strong>3D labels</strong><small>Arcs · hover for fixture #</small></span>
+        </label>
+      </section>
+
+      </div>
       <p id="fallback-note" class="notice" hidden>
         WebGPU is unavailable, so this session is using the Canvas 2D fallback.
       </p>
     </section>
+
+    <aside id="sequence-inspector" class="toolbar toolbar-right" aria-label="Playback and OLAT preview" hidden>
+      <section class="tool-section" data-workspace-controls="playback" hidden>
+        <p class="eyebrow">Playback inspector</p>
+        <h2>Sequences and preview</h2>
+        <label class="select-label" for="simulation-file">Simulate a local playback file</label>
+        <input id="simulation-file" type="file" accept=".cbor,.zst,.json">
+        <p class="sequence-help">Preview on the model without uploading to the stage.</p>
+        <ul id="sequence-list" aria-label="Uploaded sequences"></ul>
+      </section>
+      <section class="tool-section" data-workspace-controls="olat" hidden>
+        <p class="eyebrow">OLAT inspector</p>
+        <h2>Sweep preview</h2>
+        <label class="select-label" for="simulation-channel">OLAT simulation emitters</label>
+        <select id="simulation-channel"><option value="rgb">RGB</option><option value="white">White</option></select>
+        <button id="simulate-olat" class="control-button" type="button">Simulate OLAT</button>
+        <p class="sequence-help">Local sweep in arc / light order at the capture rate above.</p>
+      </section>
+    </aside>
 
     <aside id="ibl-inspector" class="toolbar toolbar-right" aria-label="IBL adjustments" hidden>
       <section class="tool-section">

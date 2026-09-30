@@ -15,6 +15,15 @@ export function installWorkspace(loadSequences, refreshMode, onWorkspaceChange =
     }
     queryAll("[data-manual-controls]").forEach((element) => { element.hidden = mode !== "manual"; });
     query("#ibl-inspector").hidden = mode !== "ibl";
+    const sequenceWorkspace = mode === "playback" || mode === "olat";
+    query("#sequence-inspector").hidden = !sequenceWorkspace;
+    const simulationPanel = query("#simulation-panel");
+    if (sequenceWorkspace) query("#sequence-inspector").append(simulationPanel);
+    else if (mode === "ibl") query("#ibl-inspector").append(simulationPanel);
+    else query(".toolbar-left").insertBefore(simulationPanel, query(".camera-control"));
+    queryAll("[data-workspace-controls]").forEach((element) => {
+      element.hidden = element.dataset.workspaceControls !== mode;
+    });
     onWorkspaceChange(mode);
     if (mode === "playback") loadSequences();
   }
