@@ -15,6 +15,12 @@ export function installWorkspace(loadSequences, refreshMode, onWorkspaceChange =
     }
     queryAll("[data-manual-controls]").forEach((element) => { element.hidden = mode !== "manual"; });
     query("#ibl-inspector").hidden = mode !== "ibl";
+    const ibl = mode === "ibl";
+    const layers = query("#fixture-layers");
+    const viewSettings = query("#ibl-view-settings");
+    layers.hidden = ibl;
+    viewSettings.hidden = !ibl;
+    (ibl ? viewSettings : layers).append(query("#labels-control"));
     const sequenceWorkspace = mode === "playback" || mode === "olat";
     query("#sequence-inspector").hidden = !sequenceWorkspace;
     const simulationPanel = query("#simulation-panel");

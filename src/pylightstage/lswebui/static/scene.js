@@ -39,6 +39,7 @@ export class StageScene {
     this.instanceData = new Float32Array(this.count * this.instanceStride);
     this.fixtures = [];
     this.visibility = { rgb: true, white: true };
+    this.rgbOnly = false;
     this.selectedLogicalIndices = new Set();
     this.selectedLogicalIndex = null;
     this.hoveredLogicalIndex = null;

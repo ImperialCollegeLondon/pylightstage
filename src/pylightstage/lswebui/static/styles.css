@@ -575,3 +575,38 @@ input[type="file"]::file-selector-button {
 }
 
 #simulation-panel:has(.control-status:empty):has(#simulation-controls[hidden]) { display: none; }
+
+/* IBL has one emitter layer; give its remaining view controls the full dock. */
+.dashboard[data-workspace="ibl"] .scene-controls-dock { grid-template-columns: minmax(0, 1fr); }
+.dashboard[data-workspace="ibl"] .scene-controls-dock #camera-controls {
+  grid-template-columns: minmax(0, 3fr) minmax(8rem, 1fr);
+  grid-template-rows: auto;
+  align-items: stretch;
+}
+.dashboard[data-workspace="ibl"] #view-kind { margin-left: auto; margin-right: 1rem; }
+#ibl-view-settings .layer-row {
+  grid-template-columns: auto auto;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+#ibl-view-settings .layer-row strong { font-size: 0.6rem; }
+#ibl-view-settings .layer-swatch, #ibl-view-settings small { display: none; }
+.dashboard[data-workspace="ibl"] .canvas-shell[data-mode="2d"] + .scene-controls-dock { display: none; }
+
+[role="tabpanel"]:not([hidden]), .toolbar-right:not([hidden]) {
+  animation: workspace-reveal 180ms ease-out;
+}
+@keyframes workspace-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 760px) {
+  .dashboard[data-workspace="ibl"] .scene-controls-dock #camera-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [role="tabpanel"], .toolbar-right { animation: none !important; }
+}

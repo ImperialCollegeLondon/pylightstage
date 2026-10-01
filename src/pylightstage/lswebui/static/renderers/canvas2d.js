@@ -91,9 +91,11 @@ export class Canvas2DRenderer {
     hexagon(context, x, y, radius);
     context.clip();
     context.fillStyle = cssColour(rgb, 1.25);
-    context.fillRect(x - radius, y - radius, radius, radius * 2);
-    context.fillStyle = cssColour(white, 1.25);
-    context.fillRect(x, y - radius, radius, radius * 2);
+    context.fillRect(x - radius, y - radius, radius * (scene.rgbOnly ? 2 : 1), radius * 2);
+    if (!scene.rgbOnly) {
+      context.fillStyle = cssColour(white, 1.25);
+      context.fillRect(x, y - radius, radius, radius * 2);
+    }
     context.fillStyle = "rgb(255 255 255 / 0.035)";
     context.fillRect(x - radius, y - radius, radius * 2, radius * 0.38);
     context.restore();
@@ -107,12 +109,14 @@ export class Canvas2DRenderer {
       : hovered ? Math.max(1.5, radius * 0.0775) : Math.max(1, radius * 0.045);
     context.stroke();
 
-    context.beginPath();
-    context.moveTo(x, y - radius * 0.74);
-    context.lineTo(x, y + radius * 0.74);
-    context.strokeStyle = "rgb(5 10 12 / 0.56)";
-    context.lineWidth = Math.max(1, radius * 0.045);
-    context.stroke();
+    if (!scene.rgbOnly) {
+      context.beginPath();
+      context.moveTo(x, y - radius * 0.74);
+      context.lineTo(x, y + radius * 0.74);
+      context.strokeStyle = "rgb(5 10 12 / 0.56)";
+      context.lineWidth = Math.max(1, radius * 0.045);
+      context.stroke();
+    }
 
     if (radius >= 12) {
       context.fillStyle = selected ? "#effffc" : hovered ? "#c0d1d2" : "#91a3a8";

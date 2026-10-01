@@ -372,7 +372,28 @@ try {
     const { installIBL } = await import("/assets/ibl.js");
     const scene = new StageScene();
     const ibl = installIBL(scene, () => {});
+    scene.setFixtureIntensity(0, 0, "rgb", [80, 0, 0]);
+    scene.setFixtureIntensity(0, 0, "white", [255, 255, 255]);
+    scene.setLayerVisibility("rgb", false);
     ibl.setWorkspace("ibl");
+    const assertRGBOnly = () => {
+      const displayed = ibl.renderScene();
+      assert(displayed !== scene);
+      equal(displayed.visibility, { rgb: true, white: false });
+      assert(displayed.rgbOnly);
+      displayed.hoverFixture(0);
+      displayed.selectFixture(1);
+      for (let index = 0; index < displayed.logicalCount; index++) {
+        assert(displayed.instanceData[index * 32 + 15] >= 1);
+        equal(displayed.instanceData[index * 32 + 31], 0);
+      }
+      equal(scene.visibility, { rgb: false, white: true });
+    };
+    assertRGBOnly();
+    equal(ibl.renderScene().fixtures[0].intensity.rgb, [80, 0, 0]);
+    scene.setFixtureIntensity(0, 0, "rgb", [0, 0, 0]);
+    assertRGBOnly();
+    equal(ibl.renderScene().fixtures[0].intensity.rgb, [0, 0, 0]);
     const canvas = document.createElement("canvas");
     canvas.width = 32; canvas.height = 16;
     const context = canvas.getContext("2d");
@@ -392,6 +413,22 @@ try {
     assert(!document.querySelector("#ibl-form fieldset").disabled);
     equal(calls, 0);
     assert(ibl.renderScene().fixtures.every(({ intensity }) => intensity.rgb[0] > 254));
+    assertRGBOnly();
+    // Both halves and the former divider carry the same RGB colour.
+    const grid = document.createElement("canvas");
+    grid.width = grid.height = 100;
+    const renderer = new Canvas2DRenderer(grid);
+    const cell = { x: 50, y: 50, radius: 32, logicalIndex: 2, arc: 0, light: 2 };
+    renderer.drawCell(ibl.renderScene(), cell);
+    const pixel = (x) => [...renderer.context.getImageData(x, 60, 1, 1).data];
+    equal(pixel(40), pixel(60));
+    equal(pixel(50), pixel(60));
+    assert(pixel(60)[0] > 250 && pixel(60)[1] < 30);
+    const paired = new StageScene();
+    paired.setFixtureIntensity(0, 2, "rgb", [255, 0, 0]);
+    paired.setFixtureIntensity(0, 2, "white", [255, 255, 255]);
+    renderer.drawCell(paired, cell);
+    assert(pixel(40)[1] < 30 && pixel(60)[1] > 200, "Manual still displays both emitters");
     // A failed replacement preserves the previous valid preview.
     const invalid = new DataTransfer();
     invalid.items.add(new File(["not an image"], "broken.png", { type: "image/png" }));
@@ -472,6 +509,9 @@ try {
     assert(ibl.renderScene().fixtures.every(({ intensity }) =>
       intensity.rgb.every((value) => Math.abs(value - 127.5) < 1e-8)));
     document.querySelector("#ibl-remove").click();
+    assertRGBOnly();
+    equal(ibl.renderScene().fixtures[0].intensity.rgb, scene.fixtures[0].intensity.rgb);
+    ibl.setWorkspace("manual");
     assert(ibl.renderScene() === scene);
   });
   await test("Workspace controls fit desktop windows with readable view presets and active previews", async () => {
@@ -496,6 +536,11 @@ try {
           const sequenceWorkspace = mode === "playback" || mode === "olat";
           doc.querySelector("#sequence-inspector").hidden = !sequenceWorkspace;
           doc.querySelector("#ibl-inspector").hidden = mode !== "ibl";
+          const layers = doc.querySelector("#fixture-layers");
+          const viewSettings = doc.querySelector("#ibl-view-settings");
+          layers.hidden = mode === "ibl";
+          viewSettings.hidden = mode !== "ibl";
+          (mode === "ibl" ? viewSettings : layers).append(doc.querySelector("#labels-control"));
           const simulationPanel = doc.querySelector("#simulation-panel");
           if (sequenceWorkspace) doc.querySelector("#sequence-inspector").append(simulationPanel);
           else if (mode === "ibl") doc.querySelector("#ibl-inspector").append(simulationPanel);
@@ -520,10 +565,24 @@ try {
           const viewControls = doc.querySelector("#camera-controls").getBoundingClientRect();
           const presets = doc.querySelector(".view-grid").getBoundingClientRect();
           const reset = doc.querySelector("#reset-view").getBoundingClientRect();
-          assert(Math.abs(presets.width - reset.width) < 1, "Preset row and reset fill the same width");
-          assert(reset.top >= presets.bottom, "Reset occupies a separate row below presets");
+          if (mode === "ibl") {
+            assert(reset.left >= presets.right, "IBL presets and reset share one balanced row");
+            assert(Math.abs(reset.top - presets.top) < 1, "IBL view controls align vertically");
+            assert(layers.hidden && !viewSettings.hidden, "IBL hides layers and keeps labels with view controls");
+          } else {
+            assert(Math.abs(presets.width - reset.width) < 1, "Preset row and reset fill the same width");
+            assert(reset.top >= presets.bottom, "Reset occupies a separate row below presets");
+          }
           assert(Math.abs(reset.bottom - viewControls.bottom) < 1, "View controls fill their section vertically");
           assert(doc.querySelector(".canvas-shell").clientHeight >= 250, "Stage view remains usable");
+          if (mode === "ibl") {
+            const shell = doc.querySelector(".canvas-shell");
+            const height3D = shell.clientHeight;
+            shell.dataset.mode = "2d";
+            assert(frame.contentWindow.getComputedStyle(doc.querySelector(".scene-controls-dock")).display === "none");
+            assert(shell.clientHeight > height3D, "IBL 2D uses the space reclaimed from the dock");
+            shell.dataset.mode = "3d";
+          }
           const previewInputs = sequenceWorkspace ? [mode === "olat" ? "simulate-olat" : "simulation-file"] : [];
           for (const id of ["camera-trigger", "camera-start", "camera-stop", "simulation-stop", ...previewInputs]) {
             const bounds = doc.getElementById(id).getBoundingClientRect();
@@ -531,9 +590,31 @@ try {
           }
         }
       }
+      // Narrow IBL layouts keep the view presets and reset readable too.
+      doc.querySelector(".dashboard").dataset.workspace = "ibl";
+      doc.querySelector("#fixture-layers").hidden = true;
+      doc.querySelector("#ibl-view-settings").hidden = false;
+      doc.querySelector("#ibl-view-settings").append(doc.querySelector("#labels-control"));
+      for (const width of [390, 760, 1024]) {
+        frame.style.width = `${width}px`;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert(doc.documentElement.scrollWidth <= width, `IBL overflows horizontally at ${width}px`);
+        for (const button of doc.querySelectorAll("#camera-controls button")) {
+          assert(button.scrollWidth <= button.clientWidth + 1, `IBL ${button.textContent.trim()} overflows at ${width}px`);
+        }
+      }
     } finally { frame.remove(); }
   });
   await test("application starts with the canvas fallback", async () => {
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = "/assets/styles.css";
+    const styled = new Promise((resolve, reject) => {
+      stylesheet.onload = resolve;
+      stylesheet.onerror = reject;
+    });
+    document.head.append(stylesheet);
+    await styled;
     // Use fresh DOM nodes to avoid carrying controller listeners between tests.
     document.body.replaceChildren(...new DOMParser().parseFromString(
       await (await originalFetch("/index.html")).text(), "text/html",
@@ -553,6 +634,9 @@ try {
     equal(document.querySelector(".dashboard").dataset.workspace, "ibl");
     assert(!document.querySelector("#ibl-panel").hidden);
     assert(!document.querySelector("#ibl-inspector").hidden);
+    assert(document.querySelector("#fixture-layers").hidden);
+    equal(document.querySelector("#labels-control").parentElement.id, "ibl-view-settings");
+    equal(getComputedStyle(document.querySelector(".scene-controls-dock")).display, "none");
     assert(document.querySelector("[data-manual-controls]").hidden);
     for (const mode of ["playback", "olat"]) {
       document.querySelector(`#${mode}-tab`).click();
@@ -563,6 +647,9 @@ try {
     document.querySelector("#manual-tab").click();
     assert(document.querySelector("#ibl-inspector").hidden);
     assert(document.querySelector("#sequence-inspector").hidden);
+    assert(!document.querySelector("#fixture-layers").hidden);
+    equal(document.querySelector("#labels-control").parentElement.id, "fixture-layers");
+    assert(getComputedStyle(document.querySelector(".scene-controls-dock")).display !== "none");
     assert(document.querySelector("#simulation-panel").parentElement.classList.contains("toolbar-left"));
   });
 

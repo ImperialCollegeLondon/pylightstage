@@ -5,6 +5,8 @@ import { StageScene } from "./scene.js";
 
 export function installIBL(appliedScene, refreshMode) {
   const preview = new StageScene(appliedScene.arcs, appliedScene.lightsPerArc);
+  preview.rgbOnly = true;
+  preview.setLayerVisibility("white", false);
   const file = query("#ibl-file");
   const thumbnail = query("#ibl-thumbnail");
   const remove = query("#ibl-remove");
@@ -20,6 +22,7 @@ export function installIBL(appliedScene, refreshMode) {
   let workspace = "manual";
   let generation = 0;
   let busy = false;
+  let appliedVersion = -1;
 
   function paint(scene, values) {
     scene.fixtures.forEach(({ arc, light }, index) => {
@@ -87,6 +90,7 @@ export function installIBL(appliedScene, refreshMode) {
   remove.addEventListener("click", () => {
     generation += 1;
     environment = intensities = null;
+    appliedVersion = -1;
     thumbnail.hidden = true;
     label.hidden = true;
     fieldset.disabled = remove.disabled = true;
@@ -129,9 +133,11 @@ export function installIBL(appliedScene, refreshMode) {
       label.hidden = mode !== "ibl" || !environment;
     },
     renderScene() {
-      if (workspace !== "ibl" || !environment) return appliedScene;
-      for (const channel of ["rgb", "white"]) {
-        preview.setLayerVisibility(channel, appliedScene.visibility[channel]);
+      if (workspace !== "ibl") return appliedScene;
+      // The empty-image view also shows RGB only, without changing manual layers.
+      if (!environment && appliedVersion !== appliedScene.version) {
+        paint(preview, appliedScene.fixtures.map(({ intensity }) => intensity.rgb));
+        appliedVersion = appliedScene.version;
       }
       return preview;
     },

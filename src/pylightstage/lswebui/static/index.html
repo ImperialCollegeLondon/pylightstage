@@ -207,6 +207,7 @@
         <div class="section-heading compact">
           <h3>View</h3>
           <span id="view-kind" class="section-count">3D</span>
+          <div id="ibl-view-settings" hidden></div>
         </div>
         <div id="camera-controls">
           <div class="view-grid">
@@ -231,7 +232,7 @@
         </div>
       </section>
 
-      <section class="tool-section" data-scene-controls>
+      <section id="fixture-layers" class="tool-section" data-scene-controls>
         <div class="section-heading compact">
           <h3>Layers</h3>
           <span class="section-count">3</span>
@@ -248,7 +249,7 @@
           <span><strong>W fixtures</strong><small>White emitters</small></span>
           <b>168</b>
         </label>
-        <label class="layer-row">
+        <label id="labels-control" class="layer-row">
           <input id="show-labels" type="checkbox" checked>
           <span class="layer-swatch" aria-hidden="true">#</span>
           <span><strong>3D labels</strong><small>Arcs · hover for fixture #</small></span>
