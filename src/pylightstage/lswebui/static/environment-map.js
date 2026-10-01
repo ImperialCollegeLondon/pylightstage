@@ -14,6 +14,15 @@ export class EnvironmentMap {
   constructor({ data, width, height }, lightsPerArc = 14) {
     this.width = width;
     this.lightsPerArc = lightsPerArc;
+    // Use the original pixels, before cell averaging, as one shared RGB scale.
+    // Transparent pixels contribute no radiance and must not set the peak.
+    this.peak = 0;
+    for (let offset = 0; offset < data.length; offset += 4) {
+      const alpha = data[offset + 3] / 255;
+      for (let channel = 0; channel < 3; channel += 1) {
+        this.peak = Math.max(this.peak, LINEAR_SRGB[data[offset + channel]] * alpha);
+      }
+    }
     this.columns = new Float64Array(lightsPerArc * width * 3);
     const step = 2 * MAX_ELEVATION / (lightsPerArc - 1);
     for (let row = 0; row < lightsPerArc; row += 1) {
@@ -40,13 +49,18 @@ export class EnvironmentMap {
     }
   }
 
-  /** Panorama centre faces +X (arc 0); +90 degrees moves it to arc 3 of 12. */
-  sample(arcs, rotation = 0, exposure = 0) {
+  /** Panorama centre faces +X (arc 0); +90 degrees moves it to arc 3 of 12.
+   * Intensity is a fraction of the source peak, bounded to the range 0–1.
+   */
+  sample(arcs, rotation = 0, intensity = 1) {
+    if (typeof intensity !== "number" || !Number.isFinite(intensity)) {
+      throw new Error("IBL intensity must be a finite number");
+    }
     const { width, lightsPerArc, columns } = this;
     const values = Array.from({ length: arcs * lightsPerArc }, () => [0, 0, 0]);
     const cellWidth = width / arcs;
     const turns = ((rotation % 360) + 360) % 360 / 360;
-    const gain = 255 * 2 ** exposure;
+    const gain = this.peak > 0 ? 255 / this.peak * Math.min(1, Math.max(0, intensity)) : 0;
     for (let arc = 0; arc < arcs; arc += 1) {
       const centre = width * (0.5 + arc / arcs - turns);
       const start = centre - cellWidth / 2;
@@ -67,6 +81,6 @@ export class EnvironmentMap {
   }
 }
 
-export function sampleEnvironment(pixels, arcs, lightsPerArc, rotation = 0, exposure = 0) {
-  return new EnvironmentMap(pixels, lightsPerArc).sample(arcs, rotation, exposure);
+export function sampleEnvironment(pixels, arcs, lightsPerArc, rotation = 0, intensity = 1) {
+  return new EnvironmentMap(pixels, lightsPerArc).sample(arcs, rotation, intensity);
 }

@@ -10,7 +10,7 @@ export function installIBL(appliedScene, refreshMode) {
   const remove = query("#ibl-remove");
   const form = query("#ibl-form");
   const fieldset = query("fieldset", form);
-  const exposure = query("#ibl-exposure");
+  const intensity = query("#ibl-intensity");
   const rotation = query("#ibl-rotation");
   const status = query("#ibl-status");
   const importStatus = query("#ibl-import-status");
@@ -30,9 +30,9 @@ export function installIBL(appliedScene, refreshMode) {
 
   function updatePreview() {
     if (!environment) return;
-    intensities = environment.sample(preview.arcs, Number(rotation.value), Number(exposure.value));
+    intensities = environment.sample(preview.arcs, Number(rotation.value), Number(intensity.value) / 100);
     paint(preview, intensities);
-    query("#ibl-exposure-value").textContent = `${exposure.value} EV`;
+    query("#ibl-intensity-value").textContent = `${intensity.value}%`;
     query("#ibl-rotation-value").textContent = `${rotation.value}°`;
     status.textContent = "Unapplied changes. Preview shows calculated fixture output.";
     delete status.dataset.state;
@@ -68,7 +68,7 @@ export function installIBL(appliedScene, refreshMode) {
       environment = nextEnvironment;
       thumbnail.hidden = false;
       query("#ibl-filename").textContent = source.name;
-      exposure.value = "0";
+      intensity.value = "100";
       rotation.value = "0";
       fieldset.disabled = false;
       remove.disabled = false;
@@ -95,7 +95,7 @@ export function installIBL(appliedScene, refreshMode) {
     status.textContent = "Import an image to preview its lighting.";
     delete status.dataset.state;
   });
-  exposure.addEventListener("input", updatePreview);
+  intensity.addEventListener("input", updatePreview);
   rotation.addEventListener("input", updatePreview);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();

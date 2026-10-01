@@ -238,16 +238,22 @@ try {
     equal(document.querySelector("#sequence-status").dataset.state, "error");
     assert(!document.querySelector("#playback-panel").hasAttribute("aria-busy"));
   });
-  await test("environment sampling preserves energy, exposure and orientation", async () => {
+  await test("environment sampling maps the source peak and preserves intensity and orientation", async () => {
     const { sampleEnvironment } = await import("/assets/environment-map.js");
     const pixels = new ImageData(120, 60);
     for (let i = 0; i < pixels.data.length; i += 4) {
       pixels.data.set([128, 0, 0, 255], i);
     }
     const values = sampleEnvironment(pixels, 12, 14);
-    assert(values.every(([r, g, b]) => Math.abs(r - 55.0444) < 0.01 && g === 0 && b === 0));
-    const brighter = sampleEnvironment(pixels, 12, 14, 0, 1);
-    assert(Math.abs(brighter[0][0] - 2 * values[0][0]) < 0.001);
+    assert(values.every(([r, g, b]) => Math.abs(r - 255) < 1e-10 && g === 0 && b === 0));
+    const dimmer = sampleEnvironment(pixels, 12, 14, 0, 0.5);
+    assert(dimmer.every(([r]) => Math.abs(r - 127.5) < 1e-10));
+    equal(sampleEnvironment(pixels, 12, 14, 0, 0), Array.from({ length: 168 }, () => [0, 0, 0]));
+    equal(sampleEnvironment(pixels, 12, 14, 0, 5), values);
+    equal(sampleEnvironment(pixels, 12, 14, 0, -1), Array.from({ length: 168 }, () => [0, 0, 0]));
+    for (const invalid of [NaN, Infinity, -Infinity, "1", true]) {
+      throws(() => sampleEnvironment(pixels, 12, 14, 0, invalid));
+    }
     pixels.data.fill(0);
     for (let y = 0; y < 60; y++) for (let x = 55; x < 65; x++) {
       pixels.data.set([255, 0, 0, 255], (y * 120 + x) * 4);
@@ -259,6 +265,51 @@ try {
     assert(Math.abs(rotated[3 * 14 + 7][0] - first[7][0]) < 0.001);
     const wrapped = sampleEnvironment(pixels, 12, 14, 360);
     equal(wrapped, first);
+  });
+  await test("source peak normalization preserves RGB ratios and precedes fixture averaging", async () => {
+    const { EnvironmentMap } = await import("/assets/environment-map.js");
+    const linear = (value) => {
+      const s = value / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    const pixels = new ImageData(24, 12);
+    for (let offset = 0; offset < pixels.data.length; offset += 4) {
+      pixels.data.set([64, 32, 16, 255], offset);
+    }
+    // One brighter pixel defines the reference even though no fixture is as bright.
+    pixels.data.set([128, 64, 32, 255], (6 * 24 + 12) * 4);
+    const environment = new EnvironmentMap(pixels);
+    const baseline = [64, 32, 16].map((channel) => 255 * linear(channel) / linear(128));
+    for (const rotation of [0, 17, -90, 180]) {
+      const full = environment.sample(12, rotation);
+      const half = environment.sample(12, rotation, 0.5);
+      assert(full.every(([r, g, b]) => r < 255 && r > g && g > b));
+      // The top fixtures stay outside the bright pixel's latitude band.
+      assert(full[9 * 14].every((value, c) => Math.abs(value - baseline[c]) < 1e-10));
+      assert(half.every((rgb, i) => rgb.every((value, c) => Math.abs(value - full[i][c] / 2) < 1e-10)));
+    }
+    const solid = new ImageData(2, 1);
+    solid.data.set([128, 64, 32, 255, 128, 64, 32, 255]);
+    const expected = [128, 64, 32].map((channel) => 255 * linear(channel) / linear(128));
+    assert(new EnvironmentMap(solid).sample(12).every((rgb) =>
+      rgb.every((value, c) => Math.abs(value - expected[c]) < 1e-10)));
+  });
+  await test("black and transparent panoramas stay finite and do not distort the source peak", async () => {
+    const { EnvironmentMap } = await import("/assets/environment-map.js");
+    const pixels = new ImageData(2, 1);
+    for (const rgba of [[0, 0, 0, 255], [255, 255, 255, 0]]) {
+      pixels.data.set(rgba, 0);
+      pixels.data.set(rgba, 4);
+      for (const intensity of [0, 0.5, 1]) {
+        equal(new EnvironmentMap(pixels).sample(12, 17, intensity),
+          Array.from({ length: 168 }, () => [0, 0, 0]));
+      }
+    }
+    pixels.data.set([128, 0, 0, 128], 0);
+    // Invisible white must not dim the visible source when choosing the reference.
+    const values = new EnvironmentMap(pixels).sample(12);
+    assert(values.some(([r]) => Math.abs(r - 255) < 1e-10));
+    assert(values.every(([r, g, b]) => Number.isFinite(r) && r >= 0 && r <= 255 && g === 0 && b === 0));
   });
   await test("small panoramas cover all fixtures and preserve north/south orientation", async () => {
     const { sampleEnvironment } = await import("/assets/environment-map.js");
@@ -284,6 +335,7 @@ try {
     const { fixtureGridPosition } = await import("/assets/renderers/canvas2d.js");
     const pixels = new ImageData(10, 5);
     let sourceMean = 0;
+    let sourcePeak = 0;
     for (let y = 0; y < 5; y++) {
       const area = Math.sin((0.5 - y / 5) * Math.PI) - Math.sin((0.5 - (y + 1) / 5) * Math.PI);
       for (let x = 0; x < 10; x++) {
@@ -293,6 +345,7 @@ try {
         const s = value / 255;
         const linear = s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
         sourceMean += linear * alpha / 255 * area / 20;
+        sourcePeak = Math.max(sourcePeak, linear * alpha / 255);
       }
     }
     const environment = new EnvironmentMap(pixels);
@@ -305,7 +358,7 @@ try {
         const lower = row === 13 ? -Math.PI / 2 : 1.08 - (row + 0.5) * 2.16 / 13;
         outputMean += values[arc * 14 + light][0] / 255 * (Math.sin(upper) - Math.sin(lower)) / 24;
       }
-      assert(Math.abs(outputMean - sourceMean) < 1e-12, `Radiance changed at rotation ${rotation}`);
+      assert(Math.abs(outputMean - sourceMean / sourcePeak) < 1e-12, `Relative radiance changed at rotation ${rotation}`);
     }
     const seam = new ImageData(24, 12);
     for (let y = 0; y < 12; y++) for (const x of [0, 23]) {
@@ -373,10 +426,12 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert(scene.fixtures[0].intensity.rgb[0] > 254);
-    const exposure = document.querySelector("#ibl-exposure");
-    exposure.value = "-1";
-    exposure.dispatchEvent(new Event("input"));
-    assert(ibl.renderScene().fixtures[0].intensity.rgb[0] < 128);
+    const intensity = document.querySelector("#ibl-intensity");
+    equal([intensity.min, intensity.max, intensity.value], ["0", "100", "100"]);
+    intensity.value = "50";
+    intensity.dispatchEvent(new Event("input"));
+    equal(document.querySelector("#ibl-intensity-value").textContent, "50%");
+    assert(Math.abs(ibl.renderScene().fixtures[0].intensity.rgb[0] - 127.5) < 1e-10);
     window.fetch = async () => new Response('{"error":"offline"}', { status: 502 });
     form.dispatchEvent(new Event("submit", { cancelable: true }));
     for (let i = 0; input.disabled && i < 100; i++) {
@@ -384,6 +439,19 @@ try {
     }
     assert(scene.fixtures[0].intensity.rgb[0] > 254);
     equal(document.querySelector("#ibl-status").dataset.state, "error");
+    intensity.value = "0";
+    intensity.dispatchEvent(new Event("input"));
+    assert(ibl.renderScene().fixtures.every(({ intensity }) => intensity.rgb.every((value) => value === 0)));
+    window.fetch = async (path, options) => {
+      equal(path, "/api/ibl");
+      equal(JSON.parse(options.body).intensities, Array.from({ length: 168 }, () => [0, 0, 0]));
+      return new Response('{"result":null}');
+    };
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    for (let i = 0; input.disabled && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert(scene.fixtures.every(({ intensity }) => intensity.rgb.every((value) => value === 0)));
     // Fine black/white stripes must average in linear light before any resizing.
     canvas.width = 1200; canvas.height = 600;
     context.fillStyle = "black";
@@ -399,6 +467,8 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     equal(document.querySelector("#ibl-filename").textContent, "stripes.png");
+    equal(intensity.value, "100");
+    equal(document.querySelector("#ibl-intensity-value").textContent, "100%");
     assert(ibl.renderScene().fixtures.every(({ intensity }) =>
       intensity.rgb.every((value) => Math.abs(value - 127.5) < 1e-8)));
     document.querySelector("#ibl-remove").click();

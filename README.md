@@ -83,7 +83,7 @@ WebGPU needs a secure context: loopback HTTP works; remote access needs HTTPS.
 | Sequences | Import `.cbor`, `.cbor.zst`, or `.json`; inspect, play or delete sequences. Imports and expanded data are limited to 64 MiB. |
 | Capture / OLAT | Set a positive rate and start OLAT, trigger Manual capture, or return to Manual. Status confirms requests, not capture completion. |
 | Simulation | Preview OLAT or local playback with pause, scrub and restart, including while disconnected. No hardware commands. |
-| IBL | Import a 2:1 PNG, JPEG or WebP panorama up to 16 MiB; adjust exposure and rotation. **Switch to manual and apply** sends RGB and clears white emitters. |
+| IBL | Import a 2:1 PNG, JPEG or WebP panorama up to 16 MiB; adjust intensity and rotation. **Switch to manual and apply** sends RGB and clears white emitters. |
 
 Fixture colors reflect this UI's acknowledged commands, not live hardware
 readback. Other clients' changes may not appear. Hardware commands can partially
@@ -98,9 +98,13 @@ fixture's angular cell, with exact solid-angle weights and partial-pixel coverag
 There is no intermediate image resize. All 168 RGB fixtures use the same
 interleaved row geometry as the 2D and 3D views: `0, 7, 1, 8, …, 6, 13` from top
 to bottom. The panorama center faces arc 0; +90° rotation moves it to arc 3.
-Exposure multiplies linear output by `2^EV`, then clamps to the 0–255 intensity
-range. It uses nominal geometry without photometric calibration and previews
-fixture output. HDR/EXR is unsupported. 
+The brightest original pixel channel in linear light (including alpha) sets the
+shared RGB reference for maximum output, preserving colour ratios. Intensity
+ranges from completely dark at 0% to the original relative lighting at 100%,
+without amplification above that reference. The reference is measured before
+fixture averaging and stays fixed during rotation. Black or fully transparent
+images remain dark. It uses nominal geometry without photometric calibration
+and previews fixture output. HDR/EXR is unsupported.
 
 ## Terminal interface
 

@@ -286,8 +286,9 @@
         <h2>Lighting adjustments</h2>
         <form id="ibl-form">
           <fieldset disabled>
-            <label class="select-label" for="ibl-exposure">Exposure <output id="ibl-exposure-value">0 EV</output></label>
-            <input id="ibl-exposure" type="range" min="-8" max="8" step="0.1" value="0">
+            <label class="select-label" for="ibl-intensity">Intensity <output id="ibl-intensity-value">100%</output></label>
+            <input id="ibl-intensity" type="range" min="0" max="100" step="1" value="100" aria-describedby="ibl-intensity-help">
+            <p id="ibl-intensity-help" class="sequence-help">0% is dark; 100% preserves the image's relative lighting, with its brightest pixel mapped to maximum output.</p>
             <label class="select-label" for="ibl-rotation">Rotation <output id="ibl-rotation-value">0°</output></label>
             <input id="ibl-rotation" type="range" min="-180" max="180" step="1" value="0">
             <p class="sequence-help">RGB output · white emitters turn off on Apply. Preview uses the stage geometry, without photometric calibration.</p>
