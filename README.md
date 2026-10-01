@@ -79,58 +79,19 @@ WebGPU needs a secure context: loopback HTTP works; remote access needs HTTPS.
 
 | Workspace | Workflow |
 | --- | --- |
-| Fixtures | Select fixtures or arcs in 3D or 2D. Shift-click adds targets; Ctrl-click toggles. Apply RGB/W or polarization controls explicitly. |
-| Sequences | Import `.cbor`, `.cbor.zst`, or `.json`; inspect, play or delete sequences. Imports and expanded data are limited to 64 MiB. |
-| Capture / OLAT | Set a positive rate and start OLAT, trigger Manual capture, or return to Manual. Status confirms requests, not capture completion. |
-| Simulation | Preview OLAT or local playback with pause, scrub and restart, including while disconnected. No hardware commands. |
-| IBL | Import a 2:1 HDR/RGBE, EXR, TIFF, PFM, PNG, JPEG or WebP panorama up to 64 MiB; adjust intensity and rotation. **Switch to manual and apply** sends RGB and clears white emitters. Enable **Live sync to stage** to apply the preview and subsequent adjustments automatically. |
+| Manual | Select fixtures or arcs in 3D or 2D, then apply RGB/W or polarization controls. Shift-click adds targets; Ctrl/Command-click toggles. |
+| IBL | Import a 2:1 HDR/RGBE, EXR, TIFF, PFM, PNG, JPEG or WebP panorama; adjust intensity and rotation. Apply once or enable live sync. Both switch to Manual, set RGB and clear white emitters. |
+| Playback | Import `.cbor`, `.cbor.zst`, or `.json`; play or delete stored sequences. Files and expanded data are limited to 64 MiB. |
+| OLAT | Start a one-light-at-a-time sweep at a positive capture rate, or return to Manual. |
 
-Fixture colors reflect this UI's acknowledged commands, not live hardware
-readback. Other clients' changes may not appear. Hardware commands can partially
-execute on failure and are not retried automatically.
+Camera controls trigger single or repeated captures in Manual mode. Status confirms
+requests, not capture completion. Local simulations preview OLAT or playback without
+hardware, with pause, scrub and restart. They run once and hold the final frame;
+omitted channels retain previous values. Stop or change workspace to leave simulation.
 
-Simulations run once and hold the final frame; omitted channels retain previous
-values. Stopping or changing workspace restores the acknowledged fixture view.
-Visible playback is limited by browser refresh rate.
-
-IBL directly averages the original decoded pixels in linear light over each
-fixture's angular cell, with exact solid-angle weights and partial-pixel coverage.
-There is no intermediate image resize. All 168 RGB fixtures use the same
-interleaved row geometry as the 2D and 3D views: `0, 7, 1, 8, …, 6, 13` from top
-to bottom. The panorama center faces arc 0; +90° rotation moves it to arc 3.
-The brightest original pixel channel in linear light (including alpha) sets the
-shared RGB reference for maximum output, preserving colour ratios. Intensity
-ranges from completely dark at 0% to the original relative lighting at 100%,
-without amplification above that reference. The reference is measured before
-fixture averaging and stays fixed during rotation. Black or fully transparent
-images remain dark. It uses nominal geometry without photometric calibration
-and previews fixture output.
-
-Radiance HDR/RGBE (`.hdr`, `.rgbe`), OpenEXR (`.exr`, including half/float and
-compressed or tiled images), TIFF (`.tif`, `.tiff`, including 16-bit and floating
-point), PFM and 16-bit PNG decode natively through OpenImageIO in the local
-lswebui server. Values above 1 retain their relative radiance through integration;
-only final fixture output is scaled to 0–255. A tone-mapped thumbnail never feeds
-lighting calculations. Standard 8-bit PNG, JPEG and WebP still decode in the browser.
-Imports are limited to 64 MiB, 32 MiPixels (including 8192 × 4096), and 16384 pixels
-per dimension. Temporary decode files are removed after import. Importing does not
-command the hardware unless live sync is enabled.
-
-**Source colour space** defaults to metadata, with linear Rec.709/sRGB assumed for
-untagged HDR, EXR, PFM and floating-point TIFF, and sRGB for untagged integer images.
-Override it for linear sRGB, sRGB, ACEScg or ACES2065-1 exports. Colours convert to
-linear Rec.709 before sampling; alpha is applied once and negative colour values
-are clamped to zero. EXR uses the first image's RGB(A) channels and restores cropped
-display windows with black; deep/volume images and auxiliary-only parts are rejected.
-Changing colour space reimports the source while preserving intensity and rotation.
-
-Live sync is off by default. While enabled, intensity, rotation and imported image
-changes update the stage as well as the preview. Updates are sent at most ten times
-per second, one request at a time; rapid changes replace the pending update with
-the latest preview. Turning live sync off, removing the image or leaving IBL
-discards pending updates; an update already sent can still finish. A failed update
-stops live sync without retrying and keeps the local preview for adjustment or
-manual application. Applying or syncing IBL switches the stage to Manual mode.
+Fixture colours show this UI's acknowledged commands, not live hardware readback.
+Other clients' changes may not appear. Failed commands may have partially executed
+and are not retried automatically.
 
 ## Terminal interface
 
@@ -336,12 +297,46 @@ newer values taking precedence. Failure does not guarantee that nothing was appl
 
 The WebGPU 3D view and Canvas 2D grid share scene state. IBL drafts and simulations
 use separate previews; applying IBL or enabling its live sync sends hardware
-commands, while simulation uses only local file decoding.
+commands, while simulation uses only local file decoding. Simulation playback is
+limited by browser refresh rate.
 
 Fixture colors reflect locally acknowledged commands, not hardware readback.
-Mode is polled every three seconds while reachable. Other clients' fixture changes
-and capture progress are not tracked. Commands may partially execute on failure;
+Mode checks repeat three seconds after each response, including failures. Other
+clients' fixture changes and capture progress are not tracked. Commands may partially execute on failure;
 the UI does not retry them automatically.
+
+### IBL processing
+
+Panorama limits are 64 MiB, 32 MiPixels (e.g. 8192 × 4096), and 16384 pixels per
+dimension. **Source colour space** uses metadata by default; overrides are linear
+sRGB, sRGB, ACEScg and ACES2065-1.
+
+Intensity runs from dark at 0% to the source's relative lighting at 100%. The
+brightest source channel sets a shared RGB scale, preserved during rotation.
+The panorama centre faces arc 0; +90° moves it to arc 3. Geometry is nominal,
+without photometric calibration.
+
+Standard 8-bit PNG, JPEG and WebP decode in the browser. OpenImageIO handles other
+formats, 16-bit PNG and explicit colour-space overrides in the local backend.
+Temporary files are removed after decoding. Untagged floating-point images, HDR,
+EXR and PFM default to linear Rec.709; untagged integer images default to sRGB.
+Colours convert to linear Rec.709, alpha is applied once, and negative values are
+clamped to zero. EXR uses the first image's RGB(A) channels, fills cropped display
+windows with black, and rejects deep, volume or auxiliary-only images.
+
+Original pixels are averaged over fixture cells with solid-angle weights,
+including partial pixels. There is no resize before integration. All 168 RGB
+fixtures share the views' row order: `0, 7, 1, 8, …, 6, 13` from top to bottom.
+The source peak is measured in linear light after alpha and before averaging;
+HDR values retain their relative radiance until final output is scaled to 0–255. Tone-mapped thumbnails are for
+display only. Black or fully transparent images remain dark.
+
+Live sync is off by default. When enabled, slider and image changes send at most
+ten updates per second, one request at a time, keeping the latest pending draft.
+Turning sync off, removing the image or leaving IBL discards pending updates;
+a request already sent can still finish. Failure stops sync and retains the
+preview. Colour-space changes reimport the source while preserving intensity
+and rotation.
 
 </details>
 
@@ -357,13 +352,16 @@ the UI does not retry them automatically.
 | `sequences.py` | Sequence builder and frame snapshots. |
 | `utils.py` | Validation, intensity scaling and polarization mapping. |
 | `lscli/` | Command parsing and interactive console. |
+| `lswebui/config.py` | Validated launcher settings. |
 | `lswebui/server.py` | Static assets and HTTP routes. |
+| `lswebui/commands.py` | Command validation and LightStage client calls. |
 | `lswebui/sequence_files.py` | File validation and bounded decompression. |
+| `lswebui/environment_files.py` | Panorama decoding, colour conversion and IBL integration. |
 | `lswebui/static/` | Native JavaScript modules, controls, previews and renderers. |
 | `examples/`, `tests/` | Runnable examples and automated tests. |
 
-Runtime dependencies are `websockets`, `cbor2`, and `zstandard`. See
-[pyproject.toml](pyproject.toml) for dependencies and tool settings.
+Runtime dependencies are `websockets`, `cbor2`, `zstandard`, `numpy` and
+`OpenImageIO`. See [pyproject.toml](pyproject.toml) for versions and tool settings.
 
 | Concept | Representation |
 | --- | --- |
