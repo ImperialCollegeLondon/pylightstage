@@ -292,7 +292,12 @@
             <p id="ibl-intensity-help" class="sequence-help">0% is dark; 100% preserves the image's relative lighting, with its brightest pixel mapped to maximum output.</p>
             <label class="select-label" for="ibl-rotation">Rotation <output id="ibl-rotation-value">0°</output></label>
             <input id="ibl-rotation" type="range" min="-180" max="180" step="1" value="0">
-            <p class="sequence-help">RGB output · white emitters turn off on Apply. Preview uses the stage geometry, without photometric calibration.</p>
+            <label class="ibl-live-sync" for="ibl-live-sync">
+              <input id="ibl-live-sync" type="checkbox" aria-describedby="ibl-live-sync-help">
+              <span>Live sync to stage</span>
+            </label>
+            <p id="ibl-live-sync-help" class="sequence-help">Applies the preview and adjustments in Manual mode, with white emitters off.</p>
+            <p class="sequence-help">Preview uses the stage geometry, without photometric calibration.</p>
             <button class="control-button primary-button" type="submit">Switch to manual and apply</button>
           </fieldset>
         </form>

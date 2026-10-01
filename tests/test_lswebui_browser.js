@@ -514,6 +514,120 @@ try {
     ibl.setWorkspace("manual");
     assert(ibl.renderScene() === scene);
   });
+  await test("IBL live sync serializes latest drafts, stays interactive and stops cleanly", async () => {
+    document.body.replaceChildren(...new DOMParser().parseFromString(
+      await (await originalFetch("/index.html")).text(), "text/html",
+    ).body.children);
+    const { installIBL } = await import("/assets/ibl.js");
+    const scene = new StageScene();
+    const ibl = installIBL(scene, () => {});
+    ibl.setWorkspace("ibl");
+    const sync = document.querySelector("#ibl-live-sync");
+    const intensity = document.querySelector("#ibl-intensity");
+    const rotation = document.querySelector("#ibl-rotation");
+    const form = document.querySelector("#ibl-form");
+    const apply = form.querySelector("button[type=submit]");
+    const status = document.querySelector("#ibl-status");
+    const calls = [];
+    let active = 0;
+    window.fetch = (path, options) => {
+      equal(path, "/api/ibl");
+      equal(++active, 1);
+      return new Promise((resolve) => calls.push({
+        values: JSON.parse(options.body).intensities,
+        sentAt: performance.now(),
+        finish(ok = true) {
+          active--;
+          resolve(new Response(ok ? '{"result":null}' : '{"error":"offline"}', { status: ok ? 200 : 502 }));
+        },
+      }));
+    };
+    const waitFor = async (condition) => {
+      for (let i = 0; !condition() && i < 100; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+      assert(condition(), "Timed out waiting for live sync");
+    };
+    const changeSync = (checked) => { sync.checked = checked; sync.dispatchEvent(new Event("change")); };
+    const changeIntensity = (value) => { intensity.value = String(value); intensity.dispatchEvent(new Event("input")); };
+    const image = document.createElement("canvas");
+    image.width = 32; image.height = 16;
+    const context = image.getContext("2d");
+    context.fillStyle = "red";
+    context.fillRect(0, 0, 32, 16);
+    const blob = await new Promise((resolve) => image.toBlob(resolve));
+    const input = document.querySelector("#ibl-file");
+    const upload = (name) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([blob], name, { type: "image/png" }));
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change"));
+    };
+    assert(!sync.checked && form.querySelector("fieldset").disabled);
+    upload("live.png");
+    await waitFor(() => !form.querySelector("fieldset").disabled);
+    changeIntensity(80);
+    equal(calls.length, 0);
+    changeSync(true);
+    await waitFor(() => calls.length === 1);
+    assert(apply.hidden && !form.querySelector("fieldset").disabled && !input.disabled);
+    assert(Math.abs(calls[0].values[0][0] - 204) < 1e-8);
+    equal(scene.fixtures[0].intensity.rgb, [0, 0, 0]);
+    changeIntensity(60);
+    changeIntensity(40);
+    rotation.value = "90";
+    rotation.dispatchEvent(new Event("input"));
+    changeIntensity(20);
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    equal(calls.length, 1);
+    assert(Math.abs(ibl.renderScene().fixtures[0].intensity.rgb[0] - 51) < 1e-8);
+    calls[0].finish();
+    await waitFor(() => calls.length === 2);
+    assert(calls[1].sentAt - calls[0].sentAt >= 95, "Live updates are rate limited");
+    assert(Math.abs(calls[1].values[0][0] - 51) < 1e-8);
+    assert(Math.abs(scene.fixtures[0].intensity.rgb[0] - 204) < 1e-8);
+    assert(status.dataset.state !== "success", "Older acknowledgements must not mark a newer draft synced");
+    calls[1].finish();
+    await waitFor(() => !apply.disabled);
+    assert(sync.checked && status.dataset.state === "success");
+    assert(Math.abs(scene.fixtures[0].intensity.rgb[0] - 51) < 1e-8);
+    // Cancelling the pending timer sends nothing more.
+    changeIntensity(30);
+    changeSync(false);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    equal(calls.length, 2);
+    assert(!apply.hidden);
+    changeSync(true);
+    await waitFor(() => calls.length === 3);
+    // A replacement image remains importable while a sync is in flight.
+    upload("replacement.png");
+    await waitFor(() => document.querySelector("#ibl-filename").textContent === "replacement.png");
+    changeIntensity(70);
+    calls[2].finish(false);
+    await waitFor(() => !apply.disabled);
+    assert(!sync.checked && !apply.hidden);
+    assert(status.dataset.state === "error" && status.textContent.includes("Live sync stopped"));
+    assert(Math.abs(scene.fixtures[0].intensity.rgb[0] - 51) < 1e-8);
+    assert(Math.abs(ibl.renderScene().fixtures[0].intensity.rgb[0] - 178.5) < 1e-8);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    equal(calls.length, 3);
+    // Leaving IBL clears queued drafts but preserves an acknowledged in-flight update.
+    changeSync(true);
+    await waitFor(() => calls.length === 4);
+    changeIntensity(90);
+    ibl.setWorkspace("manual");
+    assert(!sync.checked);
+    calls[3].finish();
+    await waitFor(() => !apply.disabled);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    equal(calls.length, 4);
+    assert(Math.abs(scene.fixtures[0].intensity.rgb[0] - 178.5) < 1e-8);
+    ibl.setWorkspace("ibl");
+    assert(!sync.checked, "Returning to IBL does not restart hardware updates");
+    changeSync(true);
+    document.querySelector("#ibl-remove").click();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    equal(calls.length, 4);
+    assert(!sync.checked && form.querySelector("fieldset").disabled);
+  });
   await test("Workspace controls fit desktop windows with readable view presets and active previews", async () => {
     const frame = document.createElement("iframe");
     frame.srcdoc = (await (await originalFetch("/index.html")).text())

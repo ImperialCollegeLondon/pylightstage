@@ -83,7 +83,7 @@ WebGPU needs a secure context: loopback HTTP works; remote access needs HTTPS.
 | Sequences | Import `.cbor`, `.cbor.zst`, or `.json`; inspect, play or delete sequences. Imports and expanded data are limited to 64 MiB. |
 | Capture / OLAT | Set a positive rate and start OLAT, trigger Manual capture, or return to Manual. Status confirms requests, not capture completion. |
 | Simulation | Preview OLAT or local playback with pause, scrub and restart, including while disconnected. No hardware commands. |
-| IBL | Import a 2:1 PNG, JPEG or WebP panorama up to 16 MiB; adjust intensity and rotation. **Switch to manual and apply** sends RGB and clears white emitters. |
+| IBL | Import a 2:1 PNG, JPEG or WebP panorama up to 16 MiB; adjust intensity and rotation. **Switch to manual and apply** sends RGB and clears white emitters. Enable **Live sync to stage** to apply the preview and subsequent adjustments automatically. |
 
 Fixture colors reflect this UI's acknowledged commands, not live hardware
 readback. Other clients' changes may not appear. Hardware commands can partially
@@ -105,6 +105,14 @@ without amplification above that reference. The reference is measured before
 fixture averaging and stays fixed during rotation. Black or fully transparent
 images remain dark. It uses nominal geometry without photometric calibration
 and previews fixture output. HDR/EXR is unsupported.
+
+Live sync is off by default. While enabled, intensity, rotation and imported image
+changes update the stage as well as the preview. Updates are sent at most ten times
+per second, one request at a time; rapid changes replace the pending update with
+the latest preview. Turning live sync off, removing the image or leaving IBL
+discards pending updates; an update already sent can still finish. A failed update
+stops live sync without retrying and keeps the local preview for adjustment or
+manual application. Applying or syncing IBL switches the stage to Manual mode.
 
 ## Terminal interface
 
@@ -309,8 +317,8 @@ newer values taking precedence. Failure does not guarantee that nothing was appl
 ### Browser state
 
 The WebGPU 3D view and Canvas 2D grid share scene state. IBL drafts and simulations
-use separate previews; applying IBL explicitly sends hardware commands, while
-simulation uses only local file decoding.
+use separate previews; applying IBL or enabling its live sync sends hardware
+commands, while simulation uses only local file decoding.
 
 Fixture colors reflect locally acknowledged commands, not hardware readback.
 Mode is polled every three seconds while reachable. Other clients' fixture changes

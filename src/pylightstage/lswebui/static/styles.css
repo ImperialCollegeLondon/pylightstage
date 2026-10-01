@@ -499,6 +499,8 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 #ibl-form input, #ibl-form button { width: 100%; }
 #ibl-form button { margin-top: 1rem; }
 #ibl-form output { color: var(--teal); }
+.ibl-live-sync { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; color: #bce8e2; font-size: 0.66rem; cursor: pointer; }
+#ibl-form .ibl-live-sync input { width: 0.9rem; height: 0.9rem; margin: 0; accent-color: var(--teal); }
 
 /* Use the same field and secondary-action treatment in every workspace. */
 .control-button:not(.primary-button):not(.danger-button) {

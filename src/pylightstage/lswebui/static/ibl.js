@@ -3,6 +3,8 @@ import { errorMessage, query } from "./dom.js";
 import { EnvironmentMap } from "./environment-map.js";
 import { StageScene } from "./scene.js";
 
+const LIVE_UPDATE_INTERVAL_MS = 100;
+
 export function installIBL(appliedScene, refreshMode) {
   const preview = new StageScene(appliedScene.arcs, appliedScene.lightsPerArc);
   preview.rgbOnly = true;
@@ -14,6 +16,8 @@ export function installIBL(appliedScene, refreshMode) {
   const fieldset = query("fieldset", form);
   const intensity = query("#ibl-intensity");
   const rotation = query("#ibl-rotation");
+  const liveSync = query("#ibl-live-sync");
+  const applyButton = query("button[type=submit]", form);
   const status = query("#ibl-status");
   const importStatus = query("#ibl-import-status");
   const label = query("#ibl-preview-label");
@@ -22,6 +26,11 @@ export function installIBL(appliedScene, refreshMode) {
   let workspace = "manual";
   let generation = 0;
   let busy = false;
+  let liveRequest = false;
+  let pendingLive = null;
+  let liveTimer = null;
+  let lastSent = -Infinity;
+  let lastApplied = null;
   let appliedVersion = -1;
 
   function paint(scene, values) {
@@ -31,21 +40,62 @@ export function installIBL(appliedScene, refreshMode) {
     });
   }
 
+  function updateControls() {
+    const locked = busy && !liveRequest;
+    fieldset.disabled = !environment || locked;
+    file.disabled = locked;
+    remove.disabled = !environment || locked;
+    applyButton.disabled = busy;
+    applyButton.hidden = liveSync.checked;
+  }
+
+  function stopLive() {
+    liveSync.checked = false;
+    clearTimeout(liveTimer);
+    liveTimer = pendingLive = null;
+    updateControls();
+  }
+
+  function scheduleLive() {
+    if (!pendingLive || busy || liveTimer !== null || !liveSync.checked || workspace !== "ibl") return;
+    // Send during a drag, serializing requests and retaining only the newest draft.
+    liveTimer = setTimeout(() => {
+      liveTimer = null;
+      const submitted = pendingLive;
+      pendingLive = null;
+      if (liveSync.checked && workspace === "ibl" && submitted) sendLighting(submitted, true);
+    }, Math.max(0, LIVE_UPDATE_INTERVAL_MS - (performance.now() - lastSent)));
+  }
+
+  function showPreviewStatus() {
+    if (!environment) return;
+    const applied = lastApplied === intensities;
+    status.textContent = liveSync.checked
+      ? "Live sync pending. Preview shows calculated fixture output."
+      : applied ? "Lighting applied. Stage is in Manual mode."
+        : "Unapplied changes. Preview shows calculated fixture output.";
+    if (applied && !liveSync.checked) status.dataset.state = "success";
+    else delete status.dataset.state;
+    label.textContent = applied && !liveSync.checked ? "IBL · last applied" : "IBL preview · unapplied";
+  }
+
   function updatePreview() {
     if (!environment) return;
     intensities = environment.sample(preview.arcs, Number(rotation.value), Number(intensity.value) / 100);
     paint(preview, intensities);
     query("#ibl-intensity-value").textContent = `${intensity.value}%`;
     query("#ibl-rotation-value").textContent = `${rotation.value}°`;
-    status.textContent = "Unapplied changes. Preview shows calculated fixture output.";
-    delete status.dataset.state;
-    label.textContent = "IBL preview · unapplied";
+    showPreviewStatus();
     label.hidden = workspace !== "ibl";
+    if (liveSync.checked && workspace === "ibl") {
+      pendingLive = intensities;
+      scheduleLive();
+    }
   }
 
   file.addEventListener("change", async () => {
     const source = file.files[0];
-    if (!source || busy) return;
+    if (!source || (busy && !liveRequest)) return;
     const current = ++generation;
     importStatus.textContent = "Reading image…";
     delete importStatus.dataset.state;
@@ -73,8 +123,7 @@ export function installIBL(appliedScene, refreshMode) {
       query("#ibl-filename").textContent = source.name;
       intensity.value = "100";
       rotation.value = "0";
-      fieldset.disabled = false;
-      remove.disabled = false;
+      updateControls();
       updatePreview();
       importStatus.textContent = "Image ready.";
     } catch (error) {
@@ -90,6 +139,7 @@ export function installIBL(appliedScene, refreshMode) {
   remove.addEventListener("click", () => {
     generation += 1;
     environment = intensities = null;
+    stopLive();
     appliedVersion = -1;
     thumbnail.hidden = true;
     label.hidden = true;
@@ -101,35 +151,63 @@ export function installIBL(appliedScene, refreshMode) {
   });
   intensity.addEventListener("input", updatePreview);
   rotation.addEventListener("input", updatePreview);
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!intensities || busy) return;
-    const submitted = intensities;
+  liveSync.addEventListener("change", () => {
+    if (liveSync.checked && environment && workspace === "ibl") {
+      pendingLive = intensities;
+      updateControls();
+      scheduleLive();
+    } else stopLive();
+    showPreviewStatus();
+  });
+
+  async function sendLighting(submitted, live) {
     busy = true;
-    generation += 1; // Ignore an image decode that was pending when Apply was pressed.
-    fieldset.disabled = file.disabled = remove.disabled = true;
-    status.textContent = "Applying lighting…";
+    liveRequest = live;
+    lastSent = performance.now();
+    // A manual Apply locks the draft; live sync permits importing a replacement.
+    if (!live) generation += 1;
+    updateControls();
+    status.textContent = live ? "Syncing lighting to stage…" : "Applying lighting…";
     status.dataset.state = "working";
     try {
       await applyIBL(submitted);
       paint(appliedScene, submitted);
-      status.textContent = "Lighting applied. Stage is in Manual mode.";
-      status.dataset.state = "success";
-      label.textContent = "IBL · last applied";
+      lastApplied = submitted;
+      if (intensities === submitted) {
+        status.textContent = liveSync.checked
+          ? "Live sync on. Stage matches the preview in Manual mode."
+          : "Lighting applied. Stage is in Manual mode.";
+        status.dataset.state = "success";
+        label.textContent = liveSync.checked ? "IBL · live synced" : "IBL · last applied";
+      }
     } catch (error) {
-      status.textContent = `${errorMessage(error)} Stage state may have changed; preview remains unapplied.`;
-      status.dataset.state = "error";
-      label.textContent = "IBL preview · unapplied";
+      if (live) stopLive();
+      if (environment) {
+        status.textContent = `${live ? "Live sync stopped. " : ""}${errorMessage(error)} Stage state may have changed; preview remains unapplied.`;
+        status.dataset.state = "error";
+        label.textContent = "IBL preview · unapplied";
+      }
     } finally {
-      busy = false;
-      fieldset.disabled = file.disabled = remove.disabled = false;
-      refreshMode();
+      busy = liveRequest = false;
+      updateControls();
+      scheduleLive();
+      if (!pendingLive) refreshMode();
     }
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!intensities || busy || liveSync.checked) return;
+    sendLighting(intensities, false);
   });
 
   return {
     setWorkspace(mode) {
       workspace = mode;
+      if (mode !== "ibl") {
+        stopLive();
+        showPreviewStatus();
+      }
       label.hidden = mode !== "ibl" || !environment;
     },
     renderScene() {
