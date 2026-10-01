@@ -7,7 +7,7 @@
     { name = "Jinnuo Jiang", email = "ethan.jiang25@imperial.ac.uk" },
     { name = "Thomas Aldrian", email = "thomas.aldrian24@imperial.ac.uk" },
   ]
-  dependencies = ["cbor2", "websockets", "zstandard"]
+  dependencies = ["cbor2", "websockets", "zstandard", "numpy>=1.26", "OpenImageIO>=3.1,<4"]
   description = "Python client for ICL RGI group's Lightstage"
   license = { text = "MIT" }
   name = "pylightstage"
@@ -20,6 +20,7 @@
     Repository = "https://github.com/lightstageurop/pylightstage"
   [project.scripts]
     lscli = "pylightstage.lscli:main"
+    lswebui = "pylightstage.lswebui:main"
 
 [dependency-groups]
   dev = [
@@ -32,6 +33,9 @@
 
 [tool.setuptools.packages.find]
   where = ["src"]
+
+[tool.setuptools.package-data]
+  "pylightstage.lswebui" = ["static/*.css", "static/*.html", "static/*.js", "static/renderers/*.js"]
 
 [tool.pytest.ini_options]
   addopts = "-ra -q -m 'not integration' --cov"

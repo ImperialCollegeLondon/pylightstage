@@ -1,156 +1,472 @@
 # pylightstage
 
-A Python library and client for the [LightStage server WebSocket API][lsserver].
-
-This includes an asynchronous client, blocking wrapper, playback-sequence helpers, and `lscli` for one-shot command-line actions.
+Python clients, a terminal interface (`lscli`), and a local browser interface
+(`lswebui`) for Imperial College London's [LightStage server][lsserver]. Control
+fixtures, trigger captures, and build playback sequences. Local sequence building
+and web previews work without hardware.
 
 > [!CAUTION]
-> ICL's light stage has very bright fixtures that can flash at frequencies up to around 30 Hz.
-> Exposure to lights flashing between 3 and 30Hz **can trigger photosensitive epilepsy (PSE) or seizures**.
-> Be careful when running custom playback sequences.
+> LightStage fixtures can flash at up to around 30 Hz. Flashing lights between
+> 3 and 30 Hz can trigger photosensitive epilepsy or seizures. Use care with
+> custom playback sequences.
 
-## Install
+This README covers the source checkout; older releases may have fewer features.
 
-Install the package from PyPI:
+Start with [installation](#installation) and [connection](#connect-and-run), then
+use the [web interface](#web-interface), [terminal interface](#terminal-interface),
+or [Python API](#python-api). [Developer reference](#developer-reference) is at the end.
+
+## Installation
+
+Requires Python 3.11+ and pip. The web UI needs a browser, with no frontend build.
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install pylightstage
 ```
 
-Or from source:
+On Windows, activate with `.venv\Scripts\Activate.ps1` (PowerShell) or
+`.venv\Scripts\activate.bat` (Command Prompt). Use `python3` or `py` if needed.
+
+You can also install a wheel or source distribution from [GitHub Releases][releases]:
 
 ```bash
-git clone https://github.com/lightstageurop/pylightstage.git
-cd pylightstage
-python -m pip install .
+python -m pip install /path/to/pylightstage-<version>-py3-none-any.whl
 ```
 
-For development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Check the installation without connecting to hardware:
 
-## Usage
+```bash
+python -m pip check
+python -m pylightstage.lscli --help
+python -m pylightstage.lswebui --help
+```
 
-The hardware consists of 12 arcs (0-11), each containing 14 lights (0-13).
+For unreleased features, see the source installation instructions under
+[Developer reference](#developer-reference).
 
-Intensities are 3-element tuples like `(r, g, b)` or `(warm, neutral, cool)` with values ranging 0-255.
+## Connect and run
 
-Fixture updates can set color fixtures only (`"rgb"`), white only (`"w"`), or both together (`"rgbw"`).
+The hardware server runs separately. Confirm your stage's WebSocket endpoint and
+network access; the default is `ws://172.30.40.238:8080/ws`. See the
+[hardware/networking wiki][wiki].
 
-For more information on the hardware, see the [wiki][wiki].
+```bash
+# Read server state.
+lscli --uri ws://172.30.40.238:8080/ws get-config
+lscli --uri ws://172.30.40.238:8080/ws get-mode
 
-Basic usage might look like this:
+# Start a terminal or browser interface.
+lscli --uri ws://172.30.40.238:8080/ws interactive
+lswebui --uri ws://172.30.40.238:8080/ws
+```
 
-```py
+The web UI opens at `http://127.0.0.1:8000/`. Stop it with Ctrl-C.
+
+## Web interface
+
+```bash
+lswebui
+lswebui --bind 127.0.0.1 --port 8081 --uri ws://172.30.40.238:8080/ws
+lswebui --port 0 --no-browser
+```
+
+Defaults: `127.0.0.1:8000`, automatic browser opening. Port `0` chooses a free port;
+`--log-requests` enables HTTP logs. Bind to `0.0.0.0` only on a trusted network.
+WebGPU needs a secure context: loopback HTTP works; remote access needs HTTPS.
+
+| Workspace | Workflow |
+| --- | --- |
+| Manual | Select fixtures or arcs in 3D or 2D, then apply RGB/W or polarization controls. Shift-click adds targets; Ctrl/Command-click toggles. |
+| IBL | Import a 2:1 HDR/RGBE, EXR, TIFF, PFM, PNG, JPEG or WebP panorama; adjust intensity and rotation. Apply once or enable live sync. Both switch to Manual, set RGB and clear white emitters. |
+| Playback | Import `.cbor`, `.cbor.zst`, or `.json`; play or delete stored sequences. Files and expanded data are limited to 64 MiB. |
+| OLAT | Start a one-light-at-a-time sweep at a positive capture rate, or return to Manual. |
+
+Camera controls trigger single or repeated captures in Manual mode. Status confirms
+requests, not capture completion. Local simulations preview OLAT or playback without
+hardware, with pause, scrub and restart. They run once and hold the final frame;
+omitted channels retain previous values. Stop or change workspace to leave simulation.
+
+Fixture colours show this UI's acknowledged commands, not live hardware readback.
+Other clients' changes may not appear. Failed commands may have partially executed
+and are not retried automatically.
+
+## Terminal interface
+
+`lscli` or `lscli interactive` opens a persistent console. Enter `b` to go back or
+cancel, and `q` at the main menu to exit. Other commands connect and disconnect
+for each operation. Place `--uri` before the subcommand.
+
+```bash
+lscli --help
+lscli --uri ws://172.30.40.238:8080/ws set-mode manual
+lscli --uri ws://172.30.40.238:8080/ws set-light --arc 0 --light 4 --color rgb --intensity 16 0 0
+lscli --uri ws://172.30.40.238:8080/ws clear-light --arc 0 --light 4
+lscli --uri ws://172.30.40.238:8080/ws upload-sequence red-frame.cbor.zst
+```
+
+| Commands | Options / purpose |
+| --- | --- |
+| `get-config`, `get-mode` | Print server data as JSON. |
+| `set-mode demo\|manual\|olat\|playback` | OLAT needs `--capture-hz`; playback needs `--sequence-id`. |
+| `trigger` | Camera capture in Manual mode. |
+| `set-light`, `clear-light` | `--arc`, `--light`. |
+| `set-arc`, `clear-arc` | `--arc`. |
+| `set-horizontal-arc`, `clear-horizontal-arc` | `--light` across all arcs. |
+| `set-lightstage`, `clear-lightstage` | All fixtures. |
+| `set-polarized-light`, `clear-polarized-light` | `--arc`, `--light`, optional `--polarization up\|cp\|pp`. |
+| `upload-sequence PATH` | Upload `.cbor` or `.cbor.zst`. |
+| `list-sequences` | List summaries. |
+| `get-sequence ID`, `delete-sequence ID` | Inspect metadata or delete. |
+
+Set commands default to `--color rgbw --intensity 255 255 255`; clear commands use
+`--color rgbw`. Use `lscli COMMAND --help` for options. Errors return a nonzero
+exit status.
+
+## Python API
+
+### Clients
+
+```python
 import asyncio
 from pylightstage import LightStageClient
 
-URI = "ws://172.30.40.238:8080/ws"
-
-
 async def main():
-    async with LightStageClient(uri=URI) as client:
-        await client.turn_on_lightstage(color="rgbw", intensity=(255.0, 0.0, 0.0))
-
+    async with LightStageClient(uri="ws://172.30.40.238:8080/ws") as client:
+        print(await client.get_config())
+        print(await client.get_mode())
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-> [!NOTE]
-> The default URI of `ws://172.30.40.238:8080/ws` targets the Raspberry Pi (`lightstagepi`) on the college LAN. Replace this if your endpoint differs.
+The blocking client exposes the same methods without `await`:
 
-`lightstagepi` is configured with a static IP of `10.37.211.100` on the dedicated interface connected to the light controllers. Use this if also connected directly via ethernet.
-For now it has also been assigned `172.30.40.238` on the college LAN, though this could change. For more information about the networking setup, see the [wiki][wiki].
+```python
+from pylightstage import LightStageSyncClient
 
-See [examples/](examples/) for further usage.
-
-### Command-line interface (`lscli`)
-
-Once the package is installed, run `lscli`, or the module entry point:
-
-```bash
-lscli --help
-python -m pylightstage.lscli --help
+with LightStageSyncClient(uri="ws://172.30.40.238:8080/ws") as client:
+    print(client.get_config())
+    print(client.get_mode())
 ```
 
-For all commands you can specify a full websocket uri with `--uri`, before the command, like so:
+Control fixtures with `set_light`, `set_arc`, `set_horizontal_arc`, `set_lightstage`,
+`set_pol_light`, and corresponding `clear_*` methods. Inside an async client context:
 
-```bash
-lscli [--uri=ws://lightstage.example:8080/ws] {command}
+```python
+await client.set_mode_manual()
+await client.set_light(arc=0, light=0, color="rgb", intensity=(16, 0, 0), go=False)
+await client.set_light(arc=0, light=1, color="rgb", intensity=(16, 0, 0), go=False)
+await client.go()
 ```
 
-Where omitting `--uri` will default to `ws://172.30.40.238:8080/ws`.
+These commands change hardware. Closing the connection does not clear fixtures or
+restore the previous mode.
 
-The regular `lscli` commands are atomic: each invocation connects, performs one operation, then closes.
+### Modes and events
 
-However, with no action, or with the interactive command, `lscli` launches the visual interactive console.
+Use `set_mode_manual()`, `set_mode_demo()`, `set_mode_olat(capture_hz)`, or
+`set_mode_playback(sequence_id)`. `trigger()` requests a camera capture in Manual
+mode. `set_mode()` accepts `StageMode` and `CaptureConfig`.
 
-```bash
-lscli [--uri=...]
-lscli [--uri=...] interactive
+Register callbacks with `on_event`; wait with `wait_for_event()` or
+`wait_until_disconnected()`. Synchronous callbacks must not block the async
+receiver loop; the blocking adapter runs them in a worker thread.
+See [the event example](examples/10_events.py).
+
+### Sequences
+
+Build and save sequences without a server:
+
+```python
+from pylightstage import PlaybackSequence, SequenceBuilder
+
+builder = SequenceBuilder(name="Dim red frame", capture_hz=1.0)
+builder.set_light(arc=0, light=0, color="rgb", intensity=(16, 0, 0))
+builder.append_frame()
+builder.clear_light(arc=0, light=0)
+builder.append_frame()
+
+sequence = builder.build()
+sequence.save("red-frame.cbor.zst")
+loaded = PlaybackSequence.load("red-frame.cbor.zst")
 ```
 
-The interactive console uses colour and clears the previous page when standard
-output is a terminal. Enter `b` at a prompt to cancel or return to the preceding
-menu, and `q` from the main menu to close the connection and exit.
+Builder state carries between frames unless `auto_clear=True`. Files use `.cbor`
+or compressed `.cbor.zst`; the web importer also accepts JSON.
 
-<details>
-<summary>Further commands and usage</summary>
+Upload with `await client.upload_sequence(loaded)`, then pass the returned summary's
+`id` to `await client.set_mode_playback(id)`. Manage stored sequences with
+`list_sequences()`, `get_sequence(id)`, and `delete_sequence(id)`.
+See [examples/README.md](examples/README.md) for complete workflows.
 
-```bash
-# Inspect state. Returned data is JSON on standard output.
-lscli --uri ws://lightstage.example:8080/ws get-config
-lscli --uri ws://lightstage.example:8080/ws get-mode
+## Troubleshooting
 
-# Set and clear a fixture.
-lscli --uri ws://lightstage.example:8080/ws set-light \
-  --arc 0 --light 4 --color rgb --intensity 255 0 0
-lscli --uri ws://lightstage.example:8080/ws clear-light --arc 0 --light 4
-
-# Set larger targets and a polarized fixture.
-lscli --uri ws://lightstage.example:8080/ws set-arc \
-  --arc 2 --color w --intensity 180 120 60
-lscli --uri ws://lightstage.example:8080/ws set-lightstage \
-  --color rgbw --intensity 32 32 32
-lscli --uri ws://lightstage.example:8080/ws set-horizontal-arc --light 3
-lscli --uri ws://lightstage.example:8080/ws set-polarized-light \
-  --arc 1 --light 3 --polarization cp --intensity 255 255 255
-
-# Modes and manual capture.
-lscli --uri ws://lightstage.example:8080/ws set-mode manual
-lscli --uri ws://lightstage.example:8080/ws set-mode olat --capture-hz 30
-lscli --uri ws://lightstage.example:8080/ws trigger
-
-# Server-side sequence management.
-lscli --uri ws://lightstage.example:8080/ws upload-sequence red-frame.cbor.zst
-lscli --uri ws://lightstage.example:8080/ws list-sequences
-lscli --uri ws://lightstage.example:8080/ws get-sequence SEQUENCE_ID
-lscli --uri ws://lightstage.example:8080/ws set-mode playback --sequence-id SEQUENCE_ID
-lscli --uri ws://lightstage.example:8080/ws delete-sequence SEQUENCE_ID
-```
-
-| Command | Purpose |
+| Problem | Fix |
 | --- | --- |
-| `get-config`, `get-mode` | Print server data as JSON. |
-| `interactive` (`i`) | Open a guided, reconnectable terminal console. |
-| `set-mode demo\|manual\|olat\|playback` | Change mode. OLAT requires `--capture-hz`; Playback requires `--sequence-id`. |
-| `trigger` | Trigger a camera capture in manual mode. |
-| `set-light` / `clear-light` | Set or clear one `--arc` / `--light` target. |
-| `set-arc` / `clear-arc` | Set or clear all fixtures in `--arc`. |
-| `set-lightstage` / `clear-lightstage` | Set or clear the complete stage. |
-| `set-horizontal-arc` / `clear-horizontal-arc` | Set or clear `--light` across all arcs. |
-| `set-polarized-light` / `clear-polarized-light` | Set or clear a polarized `--arc` / `--light` target. |
-| `list-sequences`, `get-sequence`, `delete-sequence` | List, inspect, or delete server sequences. |
-| `upload-sequence PATH` | Load and upload a `.cbor` or `.cbor.zst` file. |
-
-Set commands default to `--color rgbw --intensity 255 255 255`; clear commands default to `--color rgbw`. Polarized commands accept `--polarization up`, `cp`, or `pp`, and select the appropriate RGB or white channel automatically. Use `lscli <command> --help` for exact command options.
-
-The CLI exits non-zero for invalid arguments, unreadable sequence files, connection failures, or server errors. Commands with no returned data are silent on success.
-
-</details>
+| Command not found | Activate your environment or use `python -m pylightstage.lscli` / `python -m pylightstage.lswebui`. |
+| Missing web UI | Install current source; older releases may lack it. |
+| Connection fails | Check the WebSocket URI, `/ws`, network/VPN and hardware server. |
+| HTTP port in use | Use `lswebui --port 0`. |
+| WebGPU unavailable | Use the 2D grid; check browser/GPU support and secure context. |
+| Display differs from hardware | Fixture colors track this UI's acknowledged commands only. |
+| Import rejected | Check format, dimensions, positive finite rate, 16-bit values and size limits. |
 
 ## License
 
-Distributed under the [MIT License](LICENSE).
+[MIT](LICENSE).
 
+## Developer reference
+
+<details>
+<summary>Architecture, request handling, and browser state</summary>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Computer["User computer"]
+        Async["Async Python application"] --> Client["LightStageClient"]
+        CLI["Blocking application / lscli"] --> Sync["LightStageSyncClient"]
+        Sync --> Client
+        Browser["Browser"] <-->|"Local HTTP / JSON / files"| Web["lswebui backend"]
+        Web --> Client
+        Builder["SequenceBuilder"] --> Sequence["PlaybackSequence"]
+        Sequence --> Client
+        Sequence <-->|"CBOR / Zstandard"| Disk["Local files"]
+    end
+    subgraph Controller["Stage controller computer"]
+        Server["LightStage server"]
+    end
+    Client <-->|"Network: CBOR over WebSocket"| Server
+    Server --> Hardware["Physical fixtures and capture hardware"]
+```
+
+The boxes group software by device. `LightStageClient` runs on the user computer;
+the LightStage server runs on the stage controller computer and controls the
+hardware. The browser talks to the local `lswebui` backend, which uses the Python
+client to reach the server. The server handles playback timing and capture.
+
+### Requests, responses, and events
+
+The participants below are software units, grouped by the computer they run on.
+The **receiver** is a background task inside `LightStageClient`, not another
+device or server. It continuously reads the same WebSocket used to send requests.
+
+```mermaid
+sequenceDiagram
+    box User computer
+        participant App as Calling code (Python / CLI / web backend)
+        participant Client as LightStageClient method
+        participant Receiver as Receiver (inside LightStageClient)
+    end
+    box Stage controller computer
+        participant Server as LightStage server
+    end
+    App->>Client: Call get_mode()
+    Client->>Server: WebSocket request with unique ID
+    Server-->>Receiver: WebSocket response with the same ID
+    Receiver->>Client: Complete the waiting request for that ID
+    Client-->>App: Return mode or raise an error
+    Note over App,Server: Events arrive independently of method calls
+    Server-->>Receiver: WebSocket event notification
+    Receiver->>App: Dispatch event to registered callbacks
+```
+
+**Requests and responses:** a method such as `await client.get_mode()` assigns a
+unique request ID, sends the command, and waits for its result. The receiver uses
+the response ID to complete the matching wait. Internally, that wait is an
+`asyncio.Future`: a placeholder for the result. IDs keep replies matched correctly
+when several requests share a connection.
+
+**Events:** the server can also send notifications that are not replies to a
+request. The receiver dispatches these to callbacks registered with `on_event`;
+they do not complete a waiting method call.
+
+Connection and request timeouts default to five seconds; uploads allow 60 seconds.
+Disconnects fail pending requests, and server errors become Python exceptions.
+Use context managers or `connect()` / `close()` to manage connections.
+
+Fixture updates with `go=False` are queued until `go()` sends a merged
+`SetFixtures` request. Failed batches are retained for an explicit retry, with
+newer values taking precedence. Failure does not guarantee that nothing was applied.
+
+### Browser state
+
+The WebGPU 3D view and Canvas 2D grid share scene state. IBL drafts and simulations
+use separate previews; applying IBL or enabling its live sync sends hardware
+commands, while simulation uses only local file decoding. Simulation playback is
+limited by browser refresh rate.
+
+Fixture colors reflect locally acknowledged commands, not hardware readback.
+Mode checks repeat three seconds after each response, including failures. Other
+clients' fixture changes and capture progress are not tracked. Commands may partially execute on failure;
+the UI does not retry them automatically.
+
+### IBL processing
+
+Panorama limits are 64 MiB, 32 MiPixels (e.g. 8192 × 4096), and 16384 pixels per
+dimension. **Source colour space** uses metadata by default; overrides are linear
+sRGB, sRGB, ACEScg and ACES2065-1.
+
+Intensity runs from dark at 0% to the source's relative lighting at 100%. The
+brightest source channel sets a shared RGB scale, preserved during rotation.
+The panorama centre faces arc 0; +90° moves it to arc 3. Geometry is nominal,
+without photometric calibration.
+
+Standard 8-bit PNG, JPEG and WebP decode in the browser. OpenImageIO handles other
+formats, 16-bit PNG and explicit colour-space overrides in the local backend.
+Temporary files are removed after decoding. Untagged floating-point images, HDR,
+EXR and PFM default to linear Rec.709; untagged integer images default to sRGB.
+Colours convert to linear Rec.709, alpha is applied once, and negative values are
+clamped to zero. EXR uses the first image's RGB(A) channels, fills cropped display
+windows with black, and rejects deep, volume or auxiliary-only images.
+
+Original pixels are averaged over fixture cells with solid-angle weights,
+including partial pixels. There is no resize before integration. All 168 RGB
+fixtures share the views' row order: `0, 7, 1, 8, …, 6, 13` from top to bottom.
+The source peak is measured in linear light after alpha and before averaging;
+HDR values retain their relative radiance until final output is scaled to 0–255. Tone-mapped thumbnails are for
+display only. Black or fully transparent images remain dark.
+
+Live sync is off by default. When enabled, slider and image changes send at most
+ten updates per second, one request at a time, keeping the latest pending draft.
+Turning sync off, removing the image or leaving IBL discards pending updates;
+a request already sent can still finish. Failure stops sync and retains the
+preview. Colour-space changes reimport the source while preserving intensity
+and rotation.
+
+</details>
+
+<details>
+<summary>Modules, data model, and HTTP API</summary>
+
+## Modules and data model
+
+| Module | Purpose |
+| --- | --- |
+| `client.py` | Async WebSocket API and blocking adapter. |
+| `models.py` | Modes, capture config, frames and sequences. |
+| `sequences.py` | Sequence builder and frame snapshots. |
+| `utils.py` | Validation, intensity scaling and polarization mapping. |
+| `lscli/` | Command parsing and interactive console. |
+| `lswebui/config.py` | Validated launcher settings. |
+| `lswebui/server.py` | Static assets and HTTP routes. |
+| `lswebui/commands.py` | Command validation and LightStage client calls. |
+| `lswebui/sequence_files.py` | File validation and bounded decompression. |
+| `lswebui/environment_files.py` | Panorama decoding, colour conversion and IBL integration. |
+| `lswebui/static/` | Native JavaScript modules, controls, previews and renderers. |
+| `examples/`, `tests/` | Runnable examples and automated tests. |
+
+Runtime dependencies are `websockets`, `cbor2`, `zstandard`, `numpy` and
+`OpenImageIO`. See [pyproject.toml](pyproject.toml) for versions and tool settings.
+
+| Concept | Representation |
+| --- | --- |
+| Fixture | `(arc, light)`: 12 arcs (`0`–`11`), 14 lights each (`0`–`13`). |
+| RGB / white intensity | `(red, green, blue)` / `(warm, neutral, cool)` in `0`–`255`. |
+| Color selector | `rgb`, `w`, or `rgbw` (same triplet for both groups). |
+| Polarization | `up`, `cp`, or `pp`, mapped to physical channels by position. |
+| `StageFrame` | White and RGB grids indexed `[arc][light]`, with 16-bit triplets. |
+| `PlaybackSequence` | Name, `capture_hz`, and frames. Duration = frames / rate. |
+| `SequenceSummary` | Server ID, name, rate, frame count and duration. |
+
+The client and builder scale public intensities to `0`–`65535`. Manually constructed
+frames must already use that range. Sequence summaries do not contain frame data.
+
+### HTTP API and embedding
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/health` | Local readiness, not hardware connectivity. |
+| `GET /api/config` | Browser configuration. |
+| `GET /api/inspect?action=...` | Server config, mode or sequence list. |
+| `POST /api/fixture` | Fixture control. |
+| `POST /api/mode`, `POST /api/capture` | Mode changes and camera triggering. |
+| `POST /api/sequences` | Play/delete or return to Manual. |
+| `POST /api/sequences/import` | Validate and upload a file. |
+| `POST /api/sequences/preview` | Validate and decode for simulation. |
+| `POST /api/ibl` | Apply RGB environment lighting. |
+| `POST /api/ibl/import?filename=...&colour_space=auto` | Decode a panorama for local preview; no hardware commands. |
+
+Embed the local server:
+
+```python
+from pylightstage.lswebui import ServerConfig, create_server
+
+config = ServerConfig(port=0, lightstage_uri="ws://127.0.0.1:8080/ws")
+with create_server(config) as server:
+    host, port = server.server_address[:2]
+    print(f"Serving on {host}:{port}")
+    server.serve_forever()
+```
+
+</details>
+
+<details>
+<summary>Source installation, development, testing, and releases</summary>
+
+### Development build
+
+For an editable checkout, create and activate a virtual environment, then run:
+
+```bash
+git clone https://github.com/lightstageurop/pylightstage.git
+cd pylightstage
+python -m pip install --upgrade pip
+python -m pip install -e .
+python -m pip install --group dev
+```
+
+Alternatively, use `uv sync --group dev` and run commands with `uv run`.
+Editable installs pick up Python changes; reload the browser after asset changes.
+Reinstall after changing dependencies or entry points.
+
+To install directly from Git:
+
+```bash
+python -m pip install --upgrade "pylightstage @ git+https://github.com/lightstageurop/pylightstage.git@main"
+```
+
+Replace `main` with a full commit hash for reproducibility. There are no nightly
+wheels; build distributions locally with `python -m pip install build` followed by
+`python -m build`. Outputs go to `dist/`. Development builds use the version in
+`pyproject.toml`, so record the commit hash as well.
+
+| Problem | Fix |
+| --- | --- |
+| pip rejects `--group` | Upgrade pip and run from the checkout. |
+| Edits do not appear | Check `pylightstage.__file__`, install with `-e .`, and reload the browser. |
+
+## Development and verification
+
+```bash
+python -m pytest
+python -m ruff check .
+python -m ruff format --check .
+python -m basedpyright
+```
+
+Default tests need no hardware. Browser tests require Firefox and otherwise skip.
+Hardware tests **change fixtures and modes**; configure `REAL_SERVER_URI` in
+[tests/test_integration.py](tests/test_integration.py) before running:
+
+```bash
+python -m pytest -m integration
+```
+
+[Tests](.github/workflows/test.yml) cover Python 3.11–3.14 on Ubuntu.
+[Linting](.github/workflows/lint.yml) also runs on PRs and pushes to `main`.
+The [release workflow](.github/workflows/release.yml) builds wheel/sdist assets,
+creates a GitHub Release and publishes to PyPI on `v*` tags. Verify checks and align
+`pyproject.toml`'s version before tagging; the release job does neither.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
+
+</details>
+
+[releases]: https://github.com/lightstageurop/pylightstage/releases
 [lsserver]: https://github.com/lightstageurop/lightstage-server-rs/tree/master/lsserver
 [wiki]: https://github.com/lightstageurop/lightstage-server-rs/wiki
