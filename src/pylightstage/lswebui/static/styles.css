@@ -501,6 +501,12 @@ h3 { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; }
 #ibl-form output { color: var(--teal); }
 .ibl-live-sync { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; color: #bce8e2; font-size: 0.66rem; cursor: pointer; }
 #ibl-form .ibl-live-sync input { width: 0.9rem; height: 0.9rem; margin: 0; accent-color: var(--teal); }
+@media (min-width: 1101px) and (max-height: 800px) {
+  #ibl-thumbnail { display: block; width: 9rem; margin: 0.6rem auto 0; }
+  #ibl-panel .select-label { margin-top: 0.5rem; }
+  #ibl-panel .sequence-help { margin-top: 0.35rem; }
+  #ibl-file { margin: 0.35rem 0; }
+}
 
 /* Use the same field and secondary-action treatment in every workspace. */
 .control-button:not(.primary-button):not(.danger-button) {

@@ -83,7 +83,7 @@ WebGPU needs a secure context: loopback HTTP works; remote access needs HTTPS.
 | Sequences | Import `.cbor`, `.cbor.zst`, or `.json`; inspect, play or delete sequences. Imports and expanded data are limited to 64 MiB. |
 | Capture / OLAT | Set a positive rate and start OLAT, trigger Manual capture, or return to Manual. Status confirms requests, not capture completion. |
 | Simulation | Preview OLAT or local playback with pause, scrub and restart, including while disconnected. No hardware commands. |
-| IBL | Import a 2:1 PNG, JPEG or WebP panorama up to 16 MiB; adjust intensity and rotation. **Switch to manual and apply** sends RGB and clears white emitters. Enable **Live sync to stage** to apply the preview and subsequent adjustments automatically. |
+| IBL | Import a 2:1 HDR/RGBE, EXR, TIFF, PFM, PNG, JPEG or WebP panorama up to 64 MiB; adjust intensity and rotation. **Switch to manual and apply** sends RGB and clears white emitters. Enable **Live sync to stage** to apply the preview and subsequent adjustments automatically. |
 
 Fixture colors reflect this UI's acknowledged commands, not live hardware
 readback. Other clients' changes may not appear. Hardware commands can partially
@@ -93,7 +93,7 @@ Simulations run once and hold the final frame; omitted channels retain previous
 values. Stopping or changing workspace restores the acknowledged fixture view.
 Visible playback is limited by browser refresh rate.
 
-IBL directly averages the original decoded sRGB pixels in linear light over each
+IBL directly averages the original decoded pixels in linear light over each
 fixture's angular cell, with exact solid-angle weights and partial-pixel coverage.
 There is no intermediate image resize. All 168 RGB fixtures use the same
 interleaved row geometry as the 2D and 3D views: `0, 7, 1, 8, …, 6, 13` from top
@@ -104,7 +104,25 @@ ranges from completely dark at 0% to the original relative lighting at 100%,
 without amplification above that reference. The reference is measured before
 fixture averaging and stays fixed during rotation. Black or fully transparent
 images remain dark. It uses nominal geometry without photometric calibration
-and previews fixture output. HDR/EXR is unsupported.
+and previews fixture output.
+
+Radiance HDR/RGBE (`.hdr`, `.rgbe`), OpenEXR (`.exr`, including half/float and
+compressed or tiled images), TIFF (`.tif`, `.tiff`, including 16-bit and floating
+point), PFM and 16-bit PNG decode natively through OpenImageIO in the local
+lswebui server. Values above 1 retain their relative radiance through integration;
+only final fixture output is scaled to 0–255. A tone-mapped thumbnail never feeds
+lighting calculations. Standard 8-bit PNG, JPEG and WebP still decode in the browser.
+Imports are limited to 64 MiB, 32 MiPixels (including 8192 × 4096), and 16384 pixels
+per dimension. Temporary decode files are removed after import. Importing does not
+command the hardware unless live sync is enabled.
+
+**Source colour space** defaults to metadata, with linear Rec.709/sRGB assumed for
+untagged HDR, EXR, PFM and floating-point TIFF, and sRGB for untagged integer images.
+Override it for linear sRGB, sRGB, ACEScg or ACES2065-1 exports. Colours convert to
+linear Rec.709 before sampling; alpha is applied once and negative colour values
+are clamped to zero. EXR uses the first image's RGB(A) channels and restores cropped
+display windows with black; deep/volume images and auxiliary-only parts are rejected.
+Changing colour space reimports the source while preserving intensity and rotation.
 
 Live sync is off by default. While enabled, intensity, rotation and imported image
 changes update the stage as well as the preview. Updates are sent at most ten times
@@ -373,6 +391,7 @@ frames must already use that range. Sequence summaries do not contain frame data
 | `POST /api/sequences/import` | Validate and upload a file. |
 | `POST /api/sequences/preview` | Validate and decode for simulation. |
 | `POST /api/ibl` | Apply RGB environment lighting. |
+| `POST /api/ibl/import?filename=...&colour_space=auto` | Decode a panorama for local preview; no hardware commands. |
 
 Embed the local server:
 

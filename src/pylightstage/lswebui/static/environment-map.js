@@ -11,6 +11,22 @@ const LINEAR_SRGB = Float64Array.from({ length: 256 }, (_, value) => {
  * partial pixels at cell edges. Cache latitude integrals for responsive sliders.
  */
 export class EnvironmentMap {
+  /** Native decoders send full-precision latitude integrals, never display pixels. */
+  static fromIntegrated({ width, lightsPerArc, peak, columns }, expectedLights = 14) {
+    if (!Number.isInteger(width) || width < 1 || width > 16384
+        || lightsPerArc !== expectedLights || !Number.isFinite(peak) || peak < 0
+        || !Array.isArray(columns) || columns.length !== lightsPerArc * width * 3
+        || !columns.every((value) => Number.isFinite(value) && value >= 0)) {
+      throw new Error("Environment import returned invalid lighting data");
+    }
+    const environment = Object.create(EnvironmentMap.prototype);
+    environment.width = width;
+    environment.lightsPerArc = lightsPerArc;
+    environment.peak = peak;
+    environment.columns = Float64Array.from(columns);
+    return environment;
+  }
+
   constructor({ data, width, height }, lightsPerArc = 14) {
     this.width = width;
     this.lightsPerArc = lightsPerArc;

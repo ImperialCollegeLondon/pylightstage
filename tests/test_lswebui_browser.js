@@ -514,6 +514,124 @@ try {
     ibl.setWorkspace("manual");
     assert(ibl.renderScene() === scene);
   });
+  await test("native HDR imports preserve radiance through preview, colour changes and live sync", async () => {
+    document.body.replaceChildren(...new DOMParser().parseFromString(
+      await (await originalFetch("/index.html")).text(), "text/html",
+    ).body.children);
+    const { installIBL } = await import("/assets/ibl.js");
+    const { EnvironmentMap } = await import("/assets/environment-map.js");
+    const scene = new StageScene();
+    const ibl = installIBL(scene, () => {});
+    ibl.setWorkspace("ibl");
+    const input = document.querySelector("#ibl-file");
+    const colour = document.querySelector("#ibl-colour-space");
+    const intensity = document.querySelector("#ibl-intensity");
+    const rotation = document.querySelector("#ibl-rotation");
+    const sync = document.querySelector("#ibl-live-sync");
+    const status = document.querySelector("#ibl-status");
+    const imported = [];
+    const applied = [];
+    window.fetch = (path, options) => {
+      if (path.startsWith("/api/ibl/import?")) {
+        imported.push(path);
+        return originalFetch(path, options);
+      }
+      equal(path, "/api/ibl");
+      applied.push(JSON.parse(options.body).intensities);
+      return Promise.resolve(new Response('{"result":null}'));
+    };
+    const waitFor = async (condition) => {
+      for (let i = 0; !condition() && i < 100; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+      assert(condition(), "Timed out waiting for HDR import");
+    };
+    // PFM stores bottom scanlines first, with little-endian float radiance.
+    const pixels = new ArrayBuffer(8 * 3 * 4);
+    const view = new DataView(pixels);
+    for (let i = 0; i < 8; i++) {
+      [i === 0 ? 40 : 4, 2, 1].forEach((value, channel) => view.setFloat32((i * 3 + channel) * 4, value, true));
+    }
+    const file = new File(["PF\n4 2\n-1.0\n", pixels], "studio.pfm");
+    const upload = (source) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(source);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change"));
+    };
+    upload(file);
+    await waitFor(() => document.querySelector("#ibl-filename").textContent === "studio.pfm");
+    equal(imported.length, 1);
+    equal(applied.length, 0);
+    const radiance = ibl.renderScene().fixtures[0].intensity.rgb;
+    assert(radiance.every((value, c) => Math.abs(value - [25.5, 12.75, 6.375][c]) < 1e-8),
+      "Values above 1 preserve their ratios without sRGB conversion or clipping");
+    equal(scene.fixtures[0].intensity.rgb, [0, 0, 0]);
+    intensity.value = "50";
+    intensity.dispatchEvent(new Event("input"));
+    rotation.value = "90";
+    rotation.dispatchEvent(new Event("input"));
+    assert(ibl.renderScene().fixtures[0].intensity.rgb.every((value, c) => Math.abs(value - radiance[c] / 2) < 1e-8));
+    equal(imported.length, 1); // Adjustments keep sampling the original native integrals locally.
+    colour.value = "srgb";
+    colour.dispatchEvent(new Event("change"));
+    await waitFor(() => imported.length === 2 && ibl.renderScene().fixtures[0].intensity.rgb[0] < 1);
+    assert(imported[1].includes("colour_space=srgb"));
+    equal([intensity.value, rotation.value], ["50", "90"]);
+    colour.value = "linear";
+    colour.dispatchEvent(new Event("change"));
+    await waitFor(() => Math.abs(ibl.renderScene().fixtures[0].intensity.rgb[0] - 12.75) < 1e-8);
+    sync.checked = true;
+    sync.dispatchEvent(new Event("change"));
+    await waitFor(() => status.dataset.state === "success");
+    equal(applied.length, 1);
+    assert(applied[0][0].every((value, c) => Math.abs(value - radiance[c] / 2) < 1e-8));
+    assert(scene.fixtures.every(({ intensity }) => intensity.white.every((value) => value === 0)));
+    sync.checked = false;
+    sync.dispatchEvent(new Event("change"));
+    const retained = ibl.renderScene().fixtures[0].intensity.rgb;
+    window.fetch = async (path) => {
+      assert(path.startsWith("/api/ibl/import?"));
+      return new Response('{"error":"Decode failed"}', { status: 400 });
+    };
+    colour.value = "acescg";
+    colour.dispatchEvent(new Event("change"));
+    await waitFor(() => document.querySelector("#ibl-import-status").dataset.state === "error");
+    equal(colour.value, "linear");
+    equal(ibl.renderScene().fixtures[0].intensity.rgb, retained);
+    upload(new File(["broken"], "broken.exr"));
+    await waitFor(() => document.querySelector("#ibl-import-status").dataset.state === "error");
+    equal(document.querySelector("#ibl-filename").textContent, "studio.pfm");
+    equal(ibl.renderScene().fixtures[0].intensity.rgb, retained);
+    equal(applied.length, 1);
+    // An import response must have valid floating-point integrals and the stage layout.
+    throws(() => EnvironmentMap.fromIntegrated({ width: 2, lightsPerArc: 14, peak: NaN, columns: [] }));
+    throws(() => EnvironmentMap.fromIntegrated({ width: 2, lightsPerArc: 13, peak: 1, columns: Array(78).fill(1) }));
+    throws(() => EnvironmentMap.fromIntegrated({ width: 2, lightsPerArc: 14, peak: 1, columns: Array(84).fill(-1) }));
+    // Manual Apply cancels an outstanding replacement, including its progress UI.
+    let finishImport;
+    window.fetch = (path, options) => {
+      if (path.startsWith("/api/ibl/import?")) {
+        return new Promise((resolve) => { finishImport = () => resolve(new Response('{"error":"late decode failure"}', { status: 400 })); });
+      }
+      equal(path, "/api/ibl");
+      applied.push(JSON.parse(options.body).intensities);
+      return Promise.resolve(new Response('{"result":null}'));
+    };
+    colour.value = "acescg";
+    colour.dispatchEvent(new Event("change"));
+    await waitFor(() => finishImport);
+    equal(document.querySelector("#ibl-import-status").textContent, "Reading image…");
+    document.querySelector("#ibl-form").dispatchEvent(new Event("submit", { cancelable: true }));
+    await waitFor(() => status.dataset.state === "success");
+    equal(colour.value, "linear");
+    assert(document.querySelector("#ibl-import-status").textContent.includes("cancelled"));
+    finishImport();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert(document.querySelector("#ibl-import-status").textContent.includes("cancelled"));
+    equal(ibl.renderScene().fixtures[0].intensity.rgb, retained);
+    equal(applied.length, 2);
+    document.querySelector("#ibl-remove").click();
+    ibl.setWorkspace("manual");
+  });
   await test("IBL live sync serializes latest drafts, stays interactive and stops cleanly", async () => {
     document.body.replaceChildren(...new DOMParser().parseFromString(
       await (await originalFetch("/index.html")).text(), "text/html",
@@ -650,6 +768,8 @@ try {
           const sequenceWorkspace = mode === "playback" || mode === "olat";
           doc.querySelector("#sequence-inspector").hidden = !sequenceWorkspace;
           doc.querySelector("#ibl-inspector").hidden = mode !== "ibl";
+          doc.querySelector("#ibl-thumbnail").hidden = mode !== "ibl";
+          doc.querySelector("#ibl-filename").textContent = mode === "ibl" ? "environment.exr" : "";
           const layers = doc.querySelector("#fixture-layers");
           const viewSettings = doc.querySelector("#ibl-view-settings");
           layers.hidden = mode === "ibl";

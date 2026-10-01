@@ -81,6 +81,10 @@ These are not hard rules and we do not make any promises about perfect backwards
 `lswebui/server.py` owns HTTP routing, request validation, and calls to the
 LightStage client. `lswebui/sequence_files.py` validates uploaded JSON/CBOR data
 before constructing playback models and bounds Zstandard expansion.
+`lswebui/environment_files.py` uses OpenImageIO to decode professional panoramas,
+converts source colour spaces and integrates original linear pixels for IBL.
+The browser receives latitude integrals and a separate tone-mapped thumbnail;
+controls continue to sample locally without repeating native decoding.
 
 The browser uses native ES modules without a build step. `api.js` is the HTTP
 boundary; the control modules own their forms and pending operations. `scene.js`

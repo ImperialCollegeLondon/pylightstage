@@ -1,6 +1,6 @@
 import { applyIBL } from "./api.js";
 import { errorMessage, query } from "./dom.js";
-import { EnvironmentMap } from "./environment-map.js";
+import { decodeEnvironmentImage } from "./environment-image.js";
 import { StageScene } from "./scene.js";
 
 const LIVE_UPDATE_INTERVAL_MS = 100;
@@ -10,6 +10,7 @@ export function installIBL(appliedScene, refreshMode) {
   preview.rgbOnly = true;
   preview.setLayerVisibility("white", false);
   const file = query("#ibl-file");
+  const colourSpace = query("#ibl-colour-space");
   const thumbnail = query("#ibl-thumbnail");
   const remove = query("#ibl-remove");
   const form = query("#ibl-form");
@@ -22,9 +23,12 @@ export function installIBL(appliedScene, refreshMode) {
   const importStatus = query("#ibl-import-status");
   const label = query("#ibl-preview-label");
   let environment = null;
+  let importedSource = null;
+  let importedColourSpace = "auto";
   let intensities = null;
   let workspace = "manual";
   let generation = 0;
+  let importing = false;
   let busy = false;
   let liveRequest = false;
   let pendingLive = null;
@@ -44,6 +48,7 @@ export function installIBL(appliedScene, refreshMode) {
     const locked = busy && !liveRequest;
     fieldset.disabled = !environment || locked;
     file.disabled = locked;
+    colourSpace.disabled = locked;
     remove.disabled = !environment || locked;
     applyButton.disabled = busy;
     applyButton.hidden = liveSync.checked;
@@ -93,52 +98,49 @@ export function installIBL(appliedScene, refreshMode) {
     }
   }
 
-  file.addEventListener("change", async () => {
-    const source = file.files[0];
+  async function loadImage(source, resetControls = true) {
     if (!source || (busy && !liveRequest)) return;
     const current = ++generation;
+    importing = true;
+    const sourceColourSpace = colourSpace.value;
     importStatus.textContent = "Reading image…";
     delete importStatus.dataset.state;
-    let bitmap;
     try {
-      if (!/\.(png|jpe?g|webp)$/i.test(source.name) || source.size > 16 * 1024 * 1024) {
-        throw new Error("Choose a PNG, JPEG or WebP panorama up to 16 MiB.");
-      }
-      bitmap = await createImageBitmap(source);
+      const decoded = await decodeEnvironmentImage(source, preview.lightsPerArc, sourceColourSpace);
       if (current !== generation) return;
-      if (Math.abs(bitmap.width / bitmap.height - 2) > 0.02) {
-        throw new Error("Use a 2:1 equirectangular panorama (for example, 2048 × 1024).");
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const nextEnvironment = new EnvironmentMap(
-        context.getImageData(0, 0, canvas.width, canvas.height), preview.lightsPerArc,
-      );
-      thumbnail.getContext("2d").drawImage(bitmap, 0, 0, thumbnail.width, thumbnail.height);
-      environment = nextEnvironment;
+      thumbnail.getContext("2d").putImageData(decoded.thumbnail, 0, 0);
+      environment = decoded.environment;
+      importedSource = source;
+      importedColourSpace = sourceColourSpace;
       thumbnail.hidden = false;
       query("#ibl-filename").textContent = source.name;
-      intensity.value = "100";
-      rotation.value = "0";
+      if (resetControls) {
+        intensity.value = "100";
+        rotation.value = "0";
+      }
       updateControls();
       updatePreview();
       importStatus.textContent = "Image ready.";
     } catch (error) {
       if (current !== generation) return;
+      if (source === importedSource) colourSpace.value = importedColourSpace;
       importStatus.textContent = errorMessage(error);
       importStatus.dataset.state = "error";
     } finally {
-      bitmap?.close();
-      if (current === generation) file.value = "";
+      if (current === generation) {
+        importing = false;
+        file.value = "";
+      }
     }
-  });
+  }
+  file.addEventListener("change", () => loadImage(file.files[0]));
+  colourSpace.addEventListener("change", () => loadImage(importedSource, false));
 
   remove.addEventListener("click", () => {
     generation += 1;
+    importing = false;
     environment = intensities = null;
+    importedSource = null;
     stopLive();
     appliedVersion = -1;
     thumbnail.hidden = true;
@@ -165,7 +167,16 @@ export function installIBL(appliedScene, refreshMode) {
     liveRequest = live;
     lastSent = performance.now();
     // A manual Apply locks the draft; live sync permits importing a replacement.
-    if (!live) generation += 1;
+    if (!live) {
+      generation += 1;
+      colourSpace.value = importedColourSpace;
+      if (importing) {
+        importing = false;
+        file.value = "";
+        importStatus.textContent = "Pending import cancelled. Current image retained.";
+        delete importStatus.dataset.state;
+      }
+    }
     updateControls();
     status.textContent = live ? "Syncing lighting to stage…" : "Applying lighting…";
     status.dataset.state = "working";

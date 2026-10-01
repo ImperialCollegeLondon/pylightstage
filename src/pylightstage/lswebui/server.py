@@ -18,6 +18,7 @@ from ..client import LightStageClient
 from ..lscli import DEFAULT_URI
 from ..models import ColorMode, PlaybackSequence, PolarizationMode
 from ..utils import color_mode, polarization_mode, validate_index, validate_intensity
+from .environment_files import MAX_ENVIRONMENT_BYTES, decode_environment
 from .sequence_files import MAX_SEQUENCE_BYTES
 from .sequence_files import decode_sequence as _decode_sequence
 from .validation import capture_rate
@@ -86,6 +87,7 @@ _STATIC_FILES = {
             "workspace",
             "ibl",
             "environment-map",
+            "environment-image",
             "capture",
             "app",
             "sequences",
@@ -425,7 +427,20 @@ def _handler_for(config: ServerConfig) -> type[BaseHTTPRequestHandler]:
                     "/api/sequences": _sequence_command,
                     "/api/ibl": _apply_ibl,
                 }
-                if path in ("/api/sequences/import", "/api/sequences/preview"):
+                if path == "/api/ibl/import":
+                    body = self._read_body(
+                        MAX_ENVIRONMENT_BYTES,
+                        "Environment image must be between 1 byte and 64 MiB",
+                    )
+                    params = parse_qs(request_url.query)
+                    response = {
+                        "result": decode_environment(
+                            body,
+                            params.get("filename", [""])[0],
+                            params.get("colour_space", ["auto"])[0],
+                        )
+                    }
+                elif path in ("/api/sequences/import", "/api/sequences/preview"):
                     body = self._read_body(
                         _MAX_SEQUENCE_BYTES,
                         "Sequence file must be between 1 byte and 64 MiB",

@@ -7,8 +7,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
+
+from pylightstage.lswebui.environment_files import decode_environment
 
 pytestmark = pytest.mark.unit
 STATIC = Path(__file__).parents[1] / "src/pylightstage/lswebui/static"
@@ -49,6 +52,25 @@ def test_browser_regressions(tmp_path):
             self.wfile.write(body)
 
         def do_POST(self):
+            if urlsplit(self.path).path == "/api/ibl/import":
+                params = parse_qs(urlsplit(self.path).query)
+                payload = self.rfile.read(int(self.headers["Content-Length"]))
+                try:
+                    result = decode_environment(
+                        payload,
+                        params["filename"][0],
+                        params.get("colour_space", ["auto"])[0],
+                    )
+                    status, response = 200, {"result": result}
+                except ValueError as exc:
+                    status, response = 400, {"error": str(exc)}
+                body = json.dumps(response).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             results.append(
                 json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             )

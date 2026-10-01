@@ -76,8 +76,17 @@
         <h3>Image-based lighting</h3>
         <p class="sequence-help">Import a 2:1 equirectangular panorama to light the whole stage.</p>
         <label class="select-label" for="ibl-file">Environment image</label>
-        <input id="ibl-file" type="file" accept="image/png,image/jpeg,image/webp">
-        <p class="sequence-help">PNG, JPEG or WebP · up to 16 MiB. HDR/EXR are not supported.</p>
+        <input id="ibl-file" type="file" accept=".hdr,.rgbe,.exr,.tif,.tiff,.pfm,.png,.jpg,.jpeg,.webp">
+        <p class="sequence-help">HDR/RGBE, EXR, TIFF, PFM, PNG, JPEG or WebP · up to 64 MiB.</p>
+        <label class="select-label" for="ibl-colour-space">Source colour space
+          <select id="ibl-colour-space">
+            <option value="auto">Auto (metadata / format)</option>
+            <option value="linear">Linear sRGB / Rec.709</option>
+            <option value="srgb">sRGB</option>
+            <option value="acescg">ACEScg</option>
+            <option value="aces2065-1">ACES2065-1</option>
+          </select>
+        </label>
         <canvas id="ibl-thumbnail" width="256" height="128" aria-label="Imported panorama" hidden></canvas>
         <p id="ibl-filename" class="sequence-help"></p>
         <button id="ibl-remove" class="sequence-button" type="button" disabled>Remove image</button>

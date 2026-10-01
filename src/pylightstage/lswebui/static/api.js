@@ -63,6 +63,15 @@ export function applyIBL(intensities) {
   return post("/api/ibl", "IBL application", { intensities });
 }
 
+export async function importEnvironment(file, colourSpace = "auto") {
+  const params = new URLSearchParams({ filename: file.name, colour_space: colourSpace });
+  return (await request(`/api/ibl/import?${params}`, "Environment import", {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+  })).result;
+}
+
 export async function previewSequence(file) {
   return (await request(`/api/sequences/preview?filename=${encodeURIComponent(file.name)}`, "Sequence preview", {
     method: "POST",

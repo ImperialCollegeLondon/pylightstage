@@ -3,6 +3,7 @@
 import http.client
 import json
 import re
+import struct
 import threading
 from io import StringIO
 from urllib.parse import urljoin
@@ -1274,6 +1275,53 @@ async def test_ibl_validates_before_connecting_and_batches_rgb_and_white(monkeyp
     assert calls[-2] == (13, 11, "w", (0, 0, 0), False)
     assert calls[-1] == "go"
     assert len(calls) == 339
+
+
+def test_ibl_import_decodes_float_radiance_without_hardware(
+    running_server, monkeypatch
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Image import must not connect to hardware")
+
+    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", forbidden)
+    payload = b"PF\n2 1\n-1.0\n" + struct.pack("<6f", 4, 2, 1, 4, 2, 1)
+    status, headers, body = request(
+        running_server, "POST", "/api/ibl/import?filename=studio.PFM", payload
+    )
+    assert status == 200 and headers["Cache-Control"] == "no-store"
+    result = json.loads(body)["result"]
+    assert result["peak"] == 4
+    assert result["columns"][:3] == pytest.approx([4, 2, 1])
+    assert result["lightsPerArc"] == 14
+
+
+@pytest.mark.parametrize(
+    "query,payload",
+    [
+        ("filename=invalid.exr", b"broken"),
+        ("filename=invalid.bmp", b"broken"),
+        ("filename=invalid.pfm&colour_space=unknown", b"broken"),
+        ("filename=invalid.hdr", b""),
+    ],
+)
+def test_ibl_import_rejects_invalid_data(running_server, query, payload):
+    status, _, body = request(
+        running_server, "POST", f"/api/ibl/import?{query}", payload
+    )
+    assert status == 400
+    assert json.loads(body)["error"]
+
+
+def test_ibl_import_rejects_oversized_body_before_reading(running_server):
+    status, _, body = request(
+        running_server,
+        "POST",
+        "/api/ibl/import?filename=large.exr",
+        b"x",
+        {"Content-Length": str(64 * 1024 * 1024 + 1)},
+    )
+    assert status == 400
+    assert "64 MiB" in json.loads(body)["error"]
 
 
 def test_ibl_http_endpoint(running_server, monkeypatch):
