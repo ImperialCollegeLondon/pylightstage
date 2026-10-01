@@ -805,6 +805,10 @@ try {
     await loaded;
     try {
       const doc = frame.contentDocument;
+      // Measure settled geometry, not the workspace entrance animation.
+      const stableLayout = doc.createElement("style");
+      stableLayout.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; }";
+      doc.head.append(stableLayout);
       for (const [width, height] of [[1280, 720], [1440, 900], [1920, 1080]]) {
         frame.style.width = `${width}px`;
         frame.style.height = `${height}px`;
@@ -837,7 +841,8 @@ try {
           doc.querySelector("#sequence-status").textContent = "Sequence imported successfully.";
           doc.querySelector("#capture-status").textContent = "OLAT requested.";
           doc.querySelector("#sequence-list").innerHTML = '<li><div>Example sequence<small>168 frames · 30 Hz</small></div><div class="sequence-actions"><button class="sequence-button">Play</button><button class="sequence-button danger-button">Delete</button></div></li>';
-          await new Promise((resolve) => frame.contentWindow.requestAnimationFrame(resolve));
+          // Geometry reads flush layout without waiting for a paint. Firefox
+          // can suspend animation frames in an off-screen iframe.
           assert(doc.documentElement.scrollHeight <= height + 1, `${mode}: page overflows at ${width}×${height}`);
           for (const toolbar of doc.querySelectorAll(".toolbar:not([hidden])")) {
             assert(toolbar.scrollHeight <= toolbar.clientHeight + 1, `${mode}: ${toolbar.className} ${toolbar.scrollHeight}/${toolbar.clientHeight} overflows at ${width}×${height}`);
