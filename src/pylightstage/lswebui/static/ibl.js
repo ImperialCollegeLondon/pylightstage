@@ -1,5 +1,5 @@
 import { applyIBL } from "./api.js";
-import { errorMessage, query } from "./dom.js";
+import { errorMessage, query, setStatus } from "./dom.js";
 import { decodeEnvironmentImage } from "./environment-image.js";
 import { StageScene } from "./scene.js";
 
@@ -124,8 +124,7 @@ export function installIBL(appliedScene, refreshMode) {
     } catch (error) {
       if (current !== generation) return;
       if (source === importedSource) colourSpace.value = importedColourSpace;
-      importStatus.textContent = errorMessage(error);
-      importStatus.dataset.state = "error";
+      setStatus(importStatus, errorMessage(error), "error");
     } finally {
       if (current === generation) {
         importing = false;
@@ -178,8 +177,7 @@ export function installIBL(appliedScene, refreshMode) {
       }
     }
     updateControls();
-    status.textContent = live ? "Syncing lighting to stage…" : "Applying lighting…";
-    status.dataset.state = "working";
+    setStatus(status, live ? "Syncing lighting to stage…" : "Applying lighting…", "working");
     try {
       await applyIBL(submitted);
       paint(appliedScene, submitted);
@@ -194,8 +192,7 @@ export function installIBL(appliedScene, refreshMode) {
     } catch (error) {
       if (live) stopLive();
       if (environment) {
-        status.textContent = `${live ? "Live sync stopped. " : ""}${errorMessage(error)} Stage state may have changed; preview remains unapplied.`;
-        status.dataset.state = "error";
+        setStatus(status, `${live ? "Live sync stopped. " : ""}${errorMessage(error)} Stage state may have changed; preview remains unapplied.`, "error");
         label.textContent = "IBL preview · unapplied";
       }
     } finally {

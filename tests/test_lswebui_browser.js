@@ -29,6 +29,38 @@ try {
   document.body.replaceChildren(...page.body.children);
 
   const { LightingSimulation, olatSequence, installSimulation } = await import("/assets/simulation.js");
+  await test("connectivity shares pending checks and ignores results after shutdown", async () => {
+    const { installConnectivity } = await import("/assets/connectivity.js");
+    let finish;
+    let calls = 0;
+    const modes = [];
+    window.fetch = () => {
+      calls++;
+      return new Promise((resolve) => { finish = resolve; });
+    };
+    const connection = installConnectivity((mode) => modes.push(mode));
+    try {
+      const first = connection.refresh();
+      assert(first === connection.refresh(), "Refresh callers await the same request");
+      equal(calls, 1);
+      finish(new Response('{"result":"Manual"}'));
+      await first;
+      equal(modes, ["Manual"]);
+      equal(document.querySelector("#service-status").dataset.state, "ready");
+      const pending = connection.refresh();
+      connection.stop();
+      connection.setStatus("error", "Stopped");
+      finish(new Response('{"result":"OLAT"}'));
+      await pending;
+      equal(modes, ["Manual"]);
+      equal(document.querySelector("#service-status").textContent, "Stopped");
+      await connection.refresh();
+      equal(calls, 2);
+    } finally {
+      connection.stop();
+    }
+  });
+
   await test("simulation clock, pause, seek, held channels and isolation", () => {
     const applied = new StageScene(2, 2);
     applied.setFixtureIntensity(0, 0, "white", [20, 30, 40]);
@@ -227,6 +259,13 @@ try {
     equal(calls, 1);
     assert(document.querySelector("#camera-stop").disabled);
     assert(document.querySelector("#camera-status").textContent.includes("Manual mode is unavailable"));
+    window.fetch = () => new Promise((resolve) => { finish = resolve; });
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    document.querySelector("#camera-stop").click();
+    const stoppedMessage = document.querySelector("#camera-status").textContent;
+    finish(new Response('{"error":"Late failure"}', { status: 502 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    equal(document.querySelector("#camera-status").textContent, stoppedMessage);
   });
   await test("malformed sequence response preserves existing library", async () => {
     const list = document.querySelector("#sequence-list");
@@ -237,6 +276,17 @@ try {
     equal(list.textContent, "Existing sequence");
     equal(document.querySelector("#sequence-status").dataset.state, "error");
     assert(!document.querySelector("#playback-panel").hasAttribute("aria-busy"));
+    window.fetch = async () => new Response(JSON.stringify({ result: [
+      { name: "Sweep", id: "sweep", total_frames: 1, capture_hz: 1, duration_secs: 1 },
+    ] }));
+    await load();
+    let finish;
+    window.fetch = () => new Promise((resolve) => { finish = resolve; });
+    const loading = load();
+    assert([...list.querySelectorAll("button")].every((button) => button.disabled));
+    finish(new Response('{"result":{}}'));
+    await loading;
+    assert([...list.querySelectorAll("button")].every((button) => !button.disabled));
   });
   await test("environment sampling maps the source peak and preserves intensity and orientation", async () => {
     const { sampleEnvironment } = await import("/assets/environment-map.js");

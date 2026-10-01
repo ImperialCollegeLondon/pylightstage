@@ -7,6 +7,7 @@ Like :mod:`pylightstage.lscli`, this module provides an installed command, a
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import webbrowser
 from collections.abc import Callable, Sequence
@@ -83,11 +84,25 @@ def _browser_url(server: LightStageWebServer, configured_bind: str) -> str:
     return f"http://{host}:{port}/"
 
 
+def _open_browser(url: str) -> bool:
+    """Omit GTK's redundant accessibility module only while launching the browser."""
+    modules = os.environ.get("GTK_MODULES")
+    if modules is None or "atk-bridge" not in modules.split(":"):
+        return webbrowser.open(url)
+    os.environ["GTK_MODULES"] = ":".join(
+        module for module in modules.split(":") if module != "atk-bridge"
+    )
+    try:
+        return webbrowser.open(url)
+    finally:
+        os.environ["GTK_MODULES"] = modules
+
+
 def run(
     argv: Sequence[str] | None = None,
     *,
     server_factory: ServerFactory = create_server,
-    browser_opener: Callable[[str], Any] = webbrowser.open,
+    browser_opener: Callable[[str], Any] = _open_browser,
     stdout: TextIO | None = None,
 ) -> int:
     """Create and serve the web UI until interrupted.

@@ -25,6 +25,16 @@ function post(path, operation, payload) {
   });
 }
 
+async function upload(path, operation, file, parameters = {}) {
+  const params = new URLSearchParams({ filename: file.name, ...parameters });
+  const payload = await request(`${path}?${params}`, operation, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+  });
+  return payload.result;
+}
+
 export function loadConfiguration() {
   return request("/api/config", "Configuration request");
 }
@@ -45,14 +55,8 @@ export async function requestMode(payload) {
 }
 
 export async function sequenceRequest(payload, file = null) {
-  const result = file
-    ? await request(`/api/sequences/import?filename=${encodeURIComponent(file.name)}`, "Sequence import", {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: file,
-    })
-    : await post("/api/sequences", "Sequence request", payload);
-  return result.result;
+  if (file) return upload("/api/sequences/import", "Sequence import", file);
+  return (await post("/api/sequences", "Sequence request", payload)).result;
 }
 
 export async function triggerCamera() {
@@ -63,19 +67,10 @@ export function applyIBL(intensities) {
   return post("/api/ibl", "IBL application", { intensities });
 }
 
-export async function importEnvironment(file, colourSpace = "auto") {
-  const params = new URLSearchParams({ filename: file.name, colour_space: colourSpace });
-  return (await request(`/api/ibl/import?${params}`, "Environment import", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: file,
-  })).result;
+export function importEnvironment(file, colourSpace = "auto") {
+  return upload("/api/ibl/import", "Environment import", file, { colour_space: colourSpace });
 }
 
-export async function previewSequence(file) {
-  return (await request(`/api/sequences/preview?filename=${encodeURIComponent(file.name)}`, "Sequence preview", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: file,
-  })).result;
+export function previewSequence(file) {
+  return upload("/api/sequences/preview", "Sequence preview", file);
 }

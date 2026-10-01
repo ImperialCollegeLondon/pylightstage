@@ -12,6 +12,12 @@ export function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+export function setStatus(element, text, state = "") {
+  element.textContent = text;
+  if (state) element.dataset.state = state;
+  else delete element.dataset.state;
+}
+
 export function setPressed(buttons, dataName, value) {
   for (const button of buttons) {
     const active = button.dataset[dataName] === value;

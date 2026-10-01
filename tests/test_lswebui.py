@@ -12,12 +12,12 @@ import pytest
 
 from pylightstage.lscli import DEFAULT_URI
 from pylightstage.lswebui import DEFAULT_BIND, DEFAULT_PORT, ServerConfig, run
-from pylightstage.lswebui.server import (
+from pylightstage.lswebui.commands import (
     _apply_fixture_control,
     _inspect_server,
     _mode_command,
-    create_server,
 )
+from pylightstage.lswebui.server import create_server
 
 pytestmark = pytest.mark.unit
 
@@ -133,7 +133,7 @@ async def test_fixture_control_uses_the_same_direct_client_operation(monkeypatch
         async def set_light(self, **kwargs):
             actions.append(("set_light", kwargs))
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
     config = ServerConfig(lightstage_uri="ws://stage.test/ws")
 
     await _apply_fixture_control(
@@ -178,7 +178,7 @@ async def test_fixture_control_supports_polarized_clear(monkeypatch):
         async def set_pol_light(self, **kwargs):
             actions.append(kwargs)
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     await _apply_fixture_control(
         ServerConfig(),
@@ -250,7 +250,7 @@ async def test_fixture_control_supports_direct_group_targets(
 
             return call
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     await _apply_fixture_control(
         ServerConfig(),
@@ -289,7 +289,7 @@ async def test_fixture_control_applies_multiple_mixed_targets(monkeypatch):
         async def set_horizontal_arc(self, **kwargs):
             actions.append(("horizontal_arc", kwargs))
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     await _apply_fixture_control(
         ServerConfig(),
@@ -362,7 +362,7 @@ async def test_fixture_control_batches_polarized_group_targets(
         async def go(self):
             actions.append(("go", {}))
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     await _apply_fixture_control(
         ServerConfig(),
@@ -407,7 +407,7 @@ async def test_fixture_control_deduplicates_overlapping_polarized_targets(monkey
         async def go(self):
             return None
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     await _apply_fixture_control(
         ServerConfig(),
@@ -459,7 +459,7 @@ async def test_server_inspector_calls_read_only_cli_actions(
 
             return call
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     assert (
         await _inspect_server(ServerConfig(lightstage_uri="ws://stage.test/ws"), action)
@@ -579,7 +579,7 @@ def test_inspection_endpoint_returns_json_serializable_server_data(
         async def get_mode(self):
             return StageMode.MANUAL
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", FakeClient)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", FakeClient)
 
     status, headers, body = request(
         running_server, "GET", "/api/inspect?action=get-mode"
@@ -611,7 +611,7 @@ def test_connectivity_probe_reports_an_unreachable_websocket(
             return None
 
     monkeypatch.setattr(
-        "pylightstage.lswebui.server.LightStageClient", UnreachableClient
+        "pylightstage.lswebui.commands.LightStageClient", UnreachableClient
     )
 
     status, _, body = request(running_server, "GET", "/api/inspect?action=get-mode")
@@ -760,19 +760,6 @@ def test_fixture_endpoint_preserves_client_error_mapping(
     assert json.loads(body) == {"error": expected_error}
 
 
-def test_browser_connectivity_status_is_driven_by_a_repeated_read_probe(running_server):
-    status, _, body = request(running_server, "GET", "/assets/app.js")
-
-    script = body.decode()
-    assert status == 200
-    assert 'await readServer("get-mode")' in script
-    assert (
-        "window.setTimeout(checkConnectivity, CONNECTIVITY_CHECK_INTERVAL_MS)" in script
-    )
-    assert 'setConnectivityStatus("ready", "Ready"' in script
-    assert 'setConnectivityStatus("error", "Unavailable"' in script
-
-
 def test_browser_exposes_brush_and_multi_selection_controls(running_server):
     status, _, body = request(running_server, "GET", "/")
     page = body.decode()
@@ -803,7 +790,10 @@ def test_browser_exposes_brush_and_multi_selection_controls(running_server):
     [
         ("/", "text/html", b"stage-view"),
         ("/assets/api.js", "text/javascript", b"controlFixture"),
-        ("/assets/app.js", "text/javascript", b"WebGPURenderer"),
+        ("/assets/app.js", "text/javascript", b"createViewport"),
+        ("/assets/viewport.js", "text/javascript", b"WebGPURenderer"),
+        ("/assets/connectivity.js", "text/javascript", b"installConnectivity"),
+        ("/assets/inspector.js", "text/javascript", b"installInspector"),
         ("/assets/camera.js", "text/javascript", b"installCameraControls"),
         ("/assets/dom.js", "text/javascript", b"Required interface element"),
         (
@@ -911,7 +901,7 @@ def test_sequence_import_rejects_invalid_files(running_server, payload):
     ],
 )
 async def test_sequence_commands_use_client(monkeypatch, action, method, args):
-    from pylightstage.lswebui.server import _sequence_command
+    from pylightstage.lswebui.commands import _sequence_command
 
     calls = []
 
@@ -929,7 +919,7 @@ async def test_sequence_commands_use_client(monkeypatch, action, method, args):
         calls.append(values)
 
     setattr(Client, method, record)
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", Client)
     await _sequence_command(ServerConfig(), {"action": action, "id": "sequence-id"})
     assert calls == [args]
 
@@ -939,7 +929,7 @@ async def test_sequence_commands_use_client(monkeypatch, action, method, args):
     [{"action": "unknown"}, {"action": "play"}, {"action": "delete", "id": 1}],
 )
 async def test_sequence_commands_validate_before_connecting(payload):
-    from pylightstage.lswebui.server import _sequence_command
+    from pylightstage.lswebui.commands import _sequence_command
 
     with pytest.raises(ValueError):
         await _sequence_command(ServerConfig(), payload)
@@ -985,7 +975,7 @@ def test_mode_endpoint_dispatches(running_server, monkeypatch, mode, args):
         async def set_mode_manual(self):
             calls.append(())
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", Client)
     payload = {"mode": mode}
     if mode == "olat":
         payload["capture_hz"] = 24.5
@@ -1010,7 +1000,7 @@ async def test_mode_validation_precedes_connection(monkeypatch, payload):
         pytest.fail("Invalid mode request opened a connection")
 
     monkeypatch.setattr(
-        "pylightstage.lswebui.server.LightStageClient", unexpected_connection
+        "pylightstage.lswebui.commands.LightStageClient", unexpected_connection
     )
     with pytest.raises(ValueError):
         await _mode_command(ServerConfig(), payload)
@@ -1052,7 +1042,7 @@ def test_camera_capture_endpoint_triggers_client(running_server, monkeypatch):
         async def trigger(self):
             calls.append("capture")
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", Client)
     status, _, body = request(running_server, "POST", "/api/capture", body="{}")
     assert status == 200
     assert json.loads(body) == {"result": None}
@@ -1098,7 +1088,7 @@ async def test_fixture_rejects_coercible_non_numeric_intensity(intensity, monkey
         pytest.fail("Invalid payload must not connect to hardware")
 
     monkeypatch.setattr(
-        "pylightstage.lswebui.server.LightStageClient", unexpected_connection
+        "pylightstage.lswebui.commands.LightStageClient", unexpected_connection
     )
     with pytest.raises(ValueError, match="intensity"):
         await _apply_fixture_control(
@@ -1234,7 +1224,7 @@ def test_invalid_upstream_json_returns_gateway_error(
 
 
 async def test_ibl_validates_before_connecting_and_batches_rgb_and_white(monkeypatch):
-    from pylightstage.lswebui.server import _apply_ibl
+    from pylightstage.lswebui.commands import _apply_ibl
 
     calls = []
 
@@ -1257,7 +1247,7 @@ async def test_ibl_validates_before_connecting_and_batches_rgb_and_white(monkeyp
         async def go(self):
             calls.append("go")
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", Client)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", Client)
     for invalid in (
         None,
         [],
@@ -1283,7 +1273,7 @@ def test_ibl_import_decodes_float_radiance_without_hardware(
     def forbidden(*args, **kwargs):
         pytest.fail("Image import must not connect to hardware")
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", forbidden)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", forbidden)
     payload = b"PF\n2 1\n-1.0\n" + struct.pack("<6f", 4, 2, 1, 4, 2, 1)
     status, headers, body = request(
         running_server, "POST", "/api/ibl/import?filename=studio.PFM", payload
@@ -1347,7 +1337,7 @@ def test_sequence_preview_never_uploads(running_server, monkeypatch, extension):
     def forbidden(*args):
         pytest.fail("Preview must not connect to hardware")
 
-    monkeypatch.setattr("pylightstage.lswebui.server.LightStageClient", forbidden)
+    monkeypatch.setattr("pylightstage.lswebui.commands.LightStageClient", forbidden)
     sequence = PlaybackSequence("Preview", 24.0, [StageFrame()])
     payload = sequence.to_cbor()
     if extension == "json":
@@ -1362,3 +1352,50 @@ def test_sequence_preview_never_uploads(running_server, monkeypatch, extension):
     )
     assert status == 200
     assert json.loads(body)["result"] == sequence.to_dict()
+
+
+@pytest.mark.parametrize(
+    "modules, expected",
+    [
+        (None, None),
+        ("", ""),
+        ("gail", "gail"),
+        ("atk-bridge", ""),
+        ("gail:atk-bridge:canberra-gtk-module", "gail:canberra-gtk-module"),
+    ],
+)
+def test_browser_launch_filters_only_redundant_module(monkeypatch, modules, expected):
+    import os
+
+    from pylightstage.lswebui import _open_browser
+
+    if modules is None:
+        monkeypatch.delenv("GTK_MODULES", raising=False)
+    else:
+        monkeypatch.setenv("GTK_MODULES", modules)
+    observed = []
+
+    def open_browser(url):
+        observed.append((url, os.environ.get("GTK_MODULES")))
+        return True
+
+    monkeypatch.setattr("pylightstage.lswebui.webbrowser.open", open_browser)
+    assert _open_browser("http://127.0.0.1:8000/") is True
+    assert observed == [("http://127.0.0.1:8000/", expected)]
+    assert os.environ.get("GTK_MODULES") == modules
+
+
+def test_browser_launch_restores_environment_on_failure(monkeypatch):
+    import os
+
+    from pylightstage.lswebui import _open_browser
+
+    monkeypatch.setenv("GTK_MODULES", "gail:atk-bridge")
+
+    def fail(_url):
+        raise OSError("Browser unavailable")
+
+    monkeypatch.setattr("pylightstage.lswebui.webbrowser.open", fail)
+    with pytest.raises(OSError, match="Browser unavailable"):
+        _open_browser("http://127.0.0.1:8000/")
+    assert os.environ["GTK_MODULES"] == "gail:atk-bridge"

@@ -1,5 +1,5 @@
 import { controlFixture } from "./api.js";
-import { errorMessage, query, queryAll } from "./dom.js";
+import { errorMessage, query, queryAll, setStatus } from "./dom.js";
 import { clamp } from "./math.js";
 import { polarizedChannel } from "./scene.js";
 
@@ -219,17 +219,14 @@ export function installFixtureControls(scene, available) {
     const name = selectedTargets.length === 1
       ? targetName(selectedTargets[0])
       : `${selectedTargets.length} selected targets`;
-    status.textContent = `${action === "clear" ? "Turning off" : "Applying"} ${name}…`;
-    status.dataset.state = "working";
+    setStatus(status, `${action === "clear" ? "Turning off" : "Applying"} ${name}…`, "working");
     try {
       await controlFixture(request);
       updateLocalSelection(request, intensity);
       updateDescription();
-      status.textContent = `${name} ${action === "clear" ? "turned off" : "updated"}.`;
-      status.dataset.state = "success";
+      setStatus(status, `${name} ${action === "clear" ? "turned off" : "updated"}.`, "success");
     } catch (error) {
-      status.textContent = errorMessage(error);
-      status.dataset.state = "error";
+      setStatus(status, errorMessage(error), "error");
     } finally {
       busy = false;
       fieldset.disabled = !available || selectedTargets.length === 0;

@@ -1,5 +1,5 @@
 import { readServer, sequenceRequest } from "./api.js";
-import { errorMessage, query } from "./dom.js";
+import { errorMessage, query, setStatus } from "./dom.js";
 
 export function installSequences(refreshMode) {
   const panel = query("#playback-panel");
@@ -9,15 +9,18 @@ export function installSequences(refreshMode) {
   let busy = false;
 
   function message(text, state = "success") {
-    status.textContent = text;
-    status.dataset.state = state;
+    setStatus(status, text, state);
   }
 
   async function run(task) {
     if (busy) return;
     busy = true;
     panel.setAttribute("aria-busy", "true");
-    const disableControls = () => panel.querySelectorAll("button").forEach((button) => { button.disabled = busy; });
+    const disableControls = () => {
+      for (const root of [panel, list]) {
+        root.querySelectorAll("button").forEach((button) => { button.disabled = busy; });
+      }
+    };
     disableControls();
     try {
       await task();

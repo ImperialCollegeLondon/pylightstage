@@ -1,5 +1,5 @@
 import { requestMode, triggerCamera } from "./api.js";
-import { errorMessage, query } from "./dom.js";
+import { errorMessage, query, setStatus } from "./dom.js";
 
 export function installCapture(refreshMode) {
   const form = query("#capture-form");
@@ -22,15 +22,12 @@ export function installCapture(refreshMode) {
     busy = true;
     form.setAttribute("aria-busy", "true");
     form.querySelectorAll("button, input").forEach((control) => { control.disabled = true; });
-    status.textContent = mode === "olat" ? "Requesting OLAT…" : "Requesting manual mode…";
-    status.dataset.state = "working";
+    setStatus(status, mode === "olat" ? "Requesting OLAT…" : "Requesting manual mode…", "working");
     try {
       await requestMode(mode === "olat" ? { mode, capture_hz: rate.valueAsNumber } : { mode });
-      status.textContent = mode === "olat" ? "OLAT requested." : "Manual mode requested.";
-      status.dataset.state = "success";
+      setStatus(status, mode === "olat" ? "OLAT requested." : "Manual mode requested.", "success");
     } catch (error) {
-      status.textContent = `${errorMessage(error)} Check the current stage mode before retrying.`;
-      status.dataset.state = "error";
+      setStatus(status, `${errorMessage(error)} Check the current stage mode before retrying.`, "error");
     } finally {
       busy = false;
       form.removeAttribute("aria-busy");
@@ -69,8 +66,7 @@ export function installCameraCapture() {
     running = false;
     generation += 1;
     window.clearTimeout(timer);
-    status.textContent = message;
-    status.dataset.state = "";
+    setStatus(status, message, "");
     updateControls();
   }
 
@@ -79,8 +75,7 @@ export function installCameraCapture() {
     busy = true;
     const startedGeneration = generation;
     updateControls();
-    status.textContent = "Capturing…";
-    status.dataset.state = "working";
+    setStatus(status, "Capturing…", "working");
     try {
       await triggerCamera();
       if (startedGeneration !== generation) return;
@@ -90,6 +85,7 @@ export function installCameraCapture() {
       status.dataset.state = "success";
       if (running) timer = window.setTimeout(capture, interval.valueAsNumber * 1000);
     } catch (error) {
+      if (startedGeneration !== generation) return;
       stopCaptures(`${errorMessage(error)} Automatic capture is stopped. Check that the stage is in Manual mode before retrying.`);
       status.dataset.state = "error";
     } finally {

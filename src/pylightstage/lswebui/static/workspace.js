@@ -1,5 +1,5 @@
 import { requestMode } from "./api.js";
-import { errorMessage, query, queryAll } from "./dom.js";
+import { errorMessage, query, queryAll, setStatus } from "./dom.js";
 
 export function installWorkspace(loadSequences, refreshMode, onWorkspaceChange = () => {}) {
   const tabs = queryAll("[role=tab][data-workspace]");
@@ -50,16 +50,14 @@ export function installWorkspace(loadSequences, refreshMode, onWorkspaceChange =
   const button = query("#start-manual");
   const status = query("#manual-status");
   button.addEventListener("click", async () => {
+    if (button.disabled) return;
     button.disabled = true;
-    status.textContent = "Requesting manual mode…";
-    status.dataset.state = "working";
+    setStatus(status, "Requesting manual mode…", "working");
     try {
       await requestMode({ mode: "manual" });
-      status.textContent = "Manual mode requested.";
-      status.dataset.state = "success";
+      setStatus(status, "Manual mode requested.", "success");
     } catch (error) {
-      status.textContent = errorMessage(error);
-      status.dataset.state = "error";
+      setStatus(status, errorMessage(error), "error");
     } finally {
       button.disabled = false;
       await refreshMode();
