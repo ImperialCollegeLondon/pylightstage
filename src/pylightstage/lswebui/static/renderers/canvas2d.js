@@ -1,14 +1,13 @@
 import { resizeCanvas } from "../math.js";
+import { fixtureRow } from "../stage-layout.js";
 
 const SQRT_3 = Math.sqrt(3);
-const LIGHTS_PER_HALF_ARC = 7;
 
 /** Interleave the two seven-light halves of each arc from top to bottom. */
-export function fixtureGridPosition(arc, light) {
+export function fixtureGridPosition(arc, light, lightsPerArc = 14) {
   return {
     column: arc,
-    row: (light % LIGHTS_PER_HALF_ARC) * 2
-      + Math.floor(light / LIGHTS_PER_HALF_ARC),
+    row: fixtureRow(light, lightsPerArc),
   };
 }
 
@@ -61,7 +60,7 @@ export class Canvas2DRenderer {
     this.cells = [];
     for (let arc = 0; arc < scene.arcs; arc += 1) {
       for (let light = 0; light < scene.lightsPerArc; light += 1) {
-        const gridPosition = fixtureGridPosition(arc, light);
+        const gridPosition = fixtureGridPosition(arc, light, scene.lightsPerArc);
         this.cells.push({
           logicalIndex: arc * scene.lightsPerArc + light,
           arc,

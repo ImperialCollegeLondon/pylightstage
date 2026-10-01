@@ -89,6 +89,30 @@ try {
     equal(scene.count, 336);
     throws(() => new StageScene(12, 1));
   });
+  await test("IBL, 2D and 3D agree on interleaved top-to-bottom fixture order", async () => {
+    const { sampleEnvironment } = await import("/assets/environment-map.js");
+    const { fixtureGridPosition } = await import("/assets/renderers/canvas2d.js");
+    const pixels = new ImageData(120, 60);
+    for (let y = 0; y < 60; y++) for (let x = 0; x < 120; x++) {
+      pixels.data.set([255 - y * 4, 0, 0, 255], (y * 120 + x) * 4);
+    }
+    const values = sampleEnvironment(pixels, 12, 14);
+    const scene = new StageScene();
+    const order = [0, 7, 1, 8, 2, 9, 3, 10, 4, 11, 5, 12, 6, 13];
+    for (let arc = 0; arc < 12; arc++) {
+      let previousY = Infinity;
+      let previousRed = Infinity;
+      for (const [row, light] of order.entries()) {
+        equal(fixtureGridPosition(arc, light).row, row);
+        const centreY = scene.getLogicalCentre(arc * 14 + light)[1];
+        const red = values[arc * 14 + light][0];
+        assert(centreY < previousY, `3D row ${row} must be below the preceding row`);
+        assert(red < previousRed, `IBL row ${row} must be darker than the preceding row`);
+        previousY = centreY;
+        previousRed = red;
+      }
+    }
+  });
   await test("polarization routes all orientations", () => {
     for (let arc = 0; arc < 12; arc++) for (let light = 0; light < 14; light++) {
       equal(polarizedChannel(arc, light, "up"), "rgbw");
@@ -236,6 +260,61 @@ try {
     const wrapped = sampleEnvironment(pixels, 12, 14, 360);
     equal(wrapped, first);
   });
+  await test("small panoramas cover all fixtures and preserve north/south orientation", async () => {
+    const { sampleEnvironment } = await import("/assets/environment-map.js");
+    const { fixtureGridPosition } = await import("/assets/renderers/canvas2d.js");
+    const pixels = new ImageData(2, 1);
+    pixels.data.set([128, 64, 32, 255, 128, 64, 32, 255]);
+    const values = sampleEnvironment(pixels, 12, 14, 17);
+    assert(values.every((rgb) => rgb.every((value) => value > 0)));
+    assert(values.every((rgb) => rgb.every((value, c) => Math.abs(value - values[0][c]) < 1e-10)));
+    const hemispheres = new ImageData(4, 2);
+    for (let x = 0; x < 4; x++) {
+      hemispheres.data.set([255, 0, 0, 255], x * 4);
+      hemispheres.data.set([0, 0, 255, 255], (4 + x) * 4);
+    }
+    const colours = sampleEnvironment(hemispheres, 12, 14);
+    for (let arc = 0; arc < 12; arc++) for (let light = 0; light < 14; light++) {
+      const expected = fixtureGridPosition(arc, light).row < 7 ? [255, 0, 0] : [0, 0, 255];
+      assert(colours[arc * 14 + light].every((value, c) => Math.abs(value - expected[c]) < 1e-10));
+    }
+  });
+  await test("fractional boundaries and panorama seam conserve solid-angle radiance", async () => {
+    const { EnvironmentMap } = await import("/assets/environment-map.js");
+    const { fixtureGridPosition } = await import("/assets/renderers/canvas2d.js");
+    const pixels = new ImageData(10, 5);
+    let sourceMean = 0;
+    for (let y = 0; y < 5; y++) {
+      const area = Math.sin((0.5 - y / 5) * Math.PI) - Math.sin((0.5 - (y + 1) / 5) * Math.PI);
+      for (let x = 0; x < 10; x++) {
+        const value = (x * 31 + y * 47) % 256;
+        const alpha = (x * 73 + y * 11) % 256;
+        pixels.data.set([value, 0, 0, alpha], (y * 10 + x) * 4);
+        const s = value / 255;
+        const linear = s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        sourceMean += linear * alpha / 255 * area / 20;
+      }
+    }
+    const environment = new EnvironmentMap(pixels);
+    for (const rotation of [0, 17, -90, 180, 359, 360]) {
+      const values = environment.sample(12, rotation);
+      let outputMean = 0;
+      for (let arc = 0; arc < 12; arc++) for (let light = 0; light < 14; light++) {
+        const row = fixtureGridPosition(arc, light).row;
+        const upper = row === 0 ? Math.PI / 2 : 1.08 - (row - 0.5) * 2.16 / 13;
+        const lower = row === 13 ? -Math.PI / 2 : 1.08 - (row + 0.5) * 2.16 / 13;
+        outputMean += values[arc * 14 + light][0] / 255 * (Math.sin(upper) - Math.sin(lower)) / 24;
+      }
+      assert(Math.abs(outputMean - sourceMean) < 1e-12, `Radiance changed at rotation ${rotation}`);
+    }
+    const seam = new ImageData(24, 12);
+    for (let y = 0; y < 12; y++) for (const x of [0, 23]) {
+      seam.data.set([255, 0, 0, 255], (y * 24 + x) * 4);
+    }
+    const red = new EnvironmentMap(seam).sample(12);
+    assert(red.slice(6 * 14, 7 * 14).every(([r]) => Math.abs(r - 255) < 1e-10));
+    assert(red.slice(0, 14).every(([r]) => r === 0));
+  });
   await test("IBL imports locally, isolates preview, applies once and retains state on failure", async () => {
     const { installIBL } = await import("/assets/ibl.js");
     const scene = new StageScene();
@@ -259,6 +338,7 @@ try {
     }
     assert(!document.querySelector("#ibl-form fieldset").disabled);
     equal(calls, 0);
+    assert(ibl.renderScene().fixtures.every(({ intensity }) => intensity.rgb[0] > 254));
     // A failed replacement preserves the previous valid preview.
     const invalid = new DataTransfer();
     invalid.items.add(new File(["not an image"], "broken.png", { type: "image/png" }));
@@ -278,7 +358,9 @@ try {
     window.fetch = (path, options) => {
       calls++;
       equal(path, "/api/ibl");
-      equal(JSON.parse(options.body).intensities.length, 168);
+      const submitted = JSON.parse(options.body).intensities;
+      equal(submitted.length, 168);
+      assert(submitted.every(([r, g, b]) => r > 254 && g === 0 && b === 0));
       return new Promise((resolve) => { finish = resolve; });
     };
     const form = document.querySelector("#ibl-form");
@@ -302,6 +384,23 @@ try {
     }
     assert(scene.fixtures[0].intensity.rgb[0] > 254);
     equal(document.querySelector("#ibl-status").dataset.state, "error");
+    // Fine black/white stripes must average in linear light before any resizing.
+    canvas.width = 1200; canvas.height = 600;
+    context.fillStyle = "black";
+    context.fillRect(0, 0, 1200, 600);
+    context.fillStyle = "white";
+    for (let x = 0; x < 1200; x += 2) context.fillRect(x, 0, 1, 600);
+    const stripedBlob = await new Promise((resolve) => canvas.toBlob(resolve));
+    const stripedTransfer = new DataTransfer();
+    stripedTransfer.items.add(new File([stripedBlob], "stripes.png", { type: "image/png" }));
+    input.files = stripedTransfer.files;
+    input.dispatchEvent(new Event("change"));
+    for (let i = 0; document.querySelector("#ibl-filename").textContent !== "stripes.png" && i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    equal(document.querySelector("#ibl-filename").textContent, "stripes.png");
+    assert(ibl.renderScene().fixtures.every(({ intensity }) =>
+      intensity.rgb.every((value) => Math.abs(value - 127.5) < 1e-8)));
     document.querySelector("#ibl-remove").click();
     assert(ibl.renderScene() === scene);
   });

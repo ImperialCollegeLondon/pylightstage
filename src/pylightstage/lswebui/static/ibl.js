@@ -1,6 +1,6 @@
 import { applyIBL } from "./api.js";
 import { errorMessage, query } from "./dom.js";
-import { sampleEnvironment } from "./environment-map.js";
+import { EnvironmentMap } from "./environment-map.js";
 import { StageScene } from "./scene.js";
 
 export function installIBL(appliedScene, refreshMode) {
@@ -15,7 +15,7 @@ export function installIBL(appliedScene, refreshMode) {
   const status = query("#ibl-status");
   const importStatus = query("#ibl-import-status");
   const label = query("#ibl-preview-label");
-  let pixels = null;
+  let environment = null;
   let intensities = null;
   let workspace = "manual";
   let generation = 0;
@@ -29,9 +29,8 @@ export function installIBL(appliedScene, refreshMode) {
   }
 
   function updatePreview() {
-    if (!pixels) return;
-    intensities = sampleEnvironment(pixels, preview.arcs, preview.lightsPerArc,
-      Number(rotation.value), Number(exposure.value));
+    if (!environment) return;
+    intensities = environment.sample(preview.arcs, Number(rotation.value), Number(exposure.value));
     paint(preview, intensities);
     query("#ibl-exposure-value").textContent = `${exposure.value} EV`;
     query("#ibl-rotation-value").textContent = `${rotation.value}°`;
@@ -58,13 +57,15 @@ export function installIBL(appliedScene, refreshMode) {
         throw new Error("Use a 2:1 equirectangular panorama (for example, 2048 × 1024).");
       }
       const canvas = document.createElement("canvas");
-      canvas.width = 512;
-      canvas.height = 256;
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const nextPixels = context.getImageData(0, 0, canvas.width, canvas.height);
+      const nextEnvironment = new EnvironmentMap(
+        context.getImageData(0, 0, canvas.width, canvas.height), preview.lightsPerArc,
+      );
       thumbnail.getContext("2d").drawImage(bitmap, 0, 0, thumbnail.width, thumbnail.height);
-      pixels = nextPixels;
+      environment = nextEnvironment;
       thumbnail.hidden = false;
       query("#ibl-filename").textContent = source.name;
       exposure.value = "0";
@@ -85,7 +86,7 @@ export function installIBL(appliedScene, refreshMode) {
 
   remove.addEventListener("click", () => {
     generation += 1;
-    pixels = intensities = null;
+    environment = intensities = null;
     thumbnail.hidden = true;
     label.hidden = true;
     fieldset.disabled = remove.disabled = true;
@@ -125,10 +126,10 @@ export function installIBL(appliedScene, refreshMode) {
   return {
     setWorkspace(mode) {
       workspace = mode;
-      label.hidden = mode !== "ibl" || !pixels;
+      label.hidden = mode !== "ibl" || !environment;
     },
     renderScene() {
-      if (workspace !== "ibl" || !pixels) return appliedScene;
+      if (workspace !== "ibl" || !environment) return appliedScene;
       for (const channel of ["rgb", "white"]) {
         preview.setLayerVisibility(channel, appliedScene.visibility[channel]);
       }

@@ -95,6 +95,7 @@ _STATIC_FILES = {
             "fixture-controls",
             "math",
             "scene",
+            "stage-layout",
             "renderers/canvas2d",
             "renderers/labels",
             "renderers/webgpu",

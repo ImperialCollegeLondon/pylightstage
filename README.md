@@ -93,9 +93,14 @@ Simulations run once and hold the final frame; omitted channels retain previous
 values. Stopping or changing workspace restores the acknowledged fixture view.
 Visible playback is limited by browser refresh rate.
 
-IBL averages sRGB pixels in linear light with solid-angle weighting. The panorama
-center faces arc 0; +90° rotation moves it to arc 3. It uses nominal geometry without
-photometric calibration and previews fixture output. HDR/EXR is unsupported.
+IBL directly averages the original decoded sRGB pixels in linear light over each
+fixture's angular cell, with exact solid-angle weights and partial-pixel coverage.
+There is no intermediate image resize. All 168 RGB fixtures use the same
+interleaved row geometry as the 2D and 3D views: `0, 7, 1, 8, …, 6, 13` from top
+to bottom. The panorama center faces arc 0; +90° rotation moves it to arc 3.
+Exposure multiplies linear output by `2^EV`, then clamps to the 0–255 intensity
+range. It uses nominal geometry without photometric calibration and previews
+fixture output. HDR/EXR is unsupported. 
 
 ## Terminal interface
 

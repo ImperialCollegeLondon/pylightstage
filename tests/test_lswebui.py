@@ -797,16 +797,6 @@ def test_browser_exposes_brush_and_multi_selection_controls(running_server):
     assert "selectedLogicalIndices" in body.decode()
 
 
-def test_2d_grid_interleaves_the_two_halves_of_each_arc(running_server):
-    status, _, body = request(running_server, "GET", "/assets/renderers/canvas2d.js")
-
-    script = body.decode()
-    assert status == 200
-    assert "const LIGHTS_PER_HALF_ARC = 7" in script
-    assert "(light % LIGHTS_PER_HALF_ARC) * 2" in script
-    assert "Math.floor(light / LIGHTS_PER_HALF_ARC)" in script
-
-
 @pytest.mark.parametrize(
     "path, content_type, marker",
     [
@@ -822,6 +812,7 @@ def test_2d_grid_interleaves_the_two_halves_of_each_arc(running_server):
         ),
         ("/assets/math.js", "text/javascript", b"resizeCanvas"),
         ("/assets/scene.js", "text/javascript", b"StageScene"),
+        ("/assets/stage-layout.js", "text/javascript", b"fixtureElevation"),
         ("/assets/renderers/canvas2d.js", "text/javascript", b"honeycomb view"),
         ("/assets/renderers/webgpu.js", "text/javascript", b"vertex_main"),
         ("/assets/renderers/labels.js", "text/javascript", b"StageLabels"),
@@ -1316,8 +1307,10 @@ def test_sequence_preview_never_uploads(running_server, monkeypatch, extension):
     elif extension == "cbor.zst":
         payload = zstd.ZstdCompressor().compress(payload)
     status, _, body = request(
-        running_server, "POST",
-        f"/api/sequences/preview?filename=test.{extension}", body=payload,
+        running_server,
+        "POST",
+        f"/api/sequences/preview?filename=test.{extension}",
+        body=payload,
     )
     assert status == 200
     assert json.loads(body)["result"] == sequence.to_dict()

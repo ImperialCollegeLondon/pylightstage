@@ -1,3 +1,5 @@
+import { fixtureElevation } from "./stage-layout.js";
+
 const VERTICAL_RGB_LIGHTS = new Set([0, 2, 4, 6, 7, 9, 11, 13]);
 const RGB_OFF = [0.035, 0.065, 0.07];
 const WHITE_OFF = [0.07, 0.068, 0.06];
@@ -52,7 +54,7 @@ export class StageScene {
       const horizontal = [-Math.sin(azimuth), 0, Math.cos(azimuth)];
       for (let light = 0; light < this.lightsPerArc; light += 1) {
         const logicalIndex = arc * this.lightsPerArc + light;
-        const elevation = -1.08 + (light / (this.lightsPerArc - 1)) * 2.16;
+        const elevation = fixtureElevation(light, this.lightsPerArc);
         const ringRadius = radius * Math.cos(elevation);
         const centre = [
           ringRadius * Math.cos(azimuth),
